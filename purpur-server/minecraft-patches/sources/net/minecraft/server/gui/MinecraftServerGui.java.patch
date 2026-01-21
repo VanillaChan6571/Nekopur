@@ -17,7 +17,7 @@
          }
  
 -        final JFrame jFrame = new JFrame("Minecraft server");
-+        final JFrame jFrame = new JFrame("Purpur Minecraft server"); // Purpur - Improve GUI
++        final JFrame jFrame = new JFrame("Nekopur Minecraft server"); // Purpur - Improve GUI
          final MinecraftServerGui minecraftServerGui = new MinecraftServerGui(server);
          jFrame.setDefaultCloseOperation(2);
          jFrame.add(minecraftServerGui);
