@@ -236,7 +236,7 @@ public class PurpurConfig {
     private static void serverModName() {
         String configured = config.getString("settings.server-mod-name");
         String brandName = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
-        if (configured == null || configured.isBlank() || "Purpur".equalsIgnoreCase(configured)) {
+        if (configured == null || configured.isBlank() || "Purpur".equalsIgnoreCase(configured) || "Nekopur".equalsIgnoreCase(configured)) {
             serverModName = brandName;
             set("settings.server-mod-name", serverModName);
             return;
