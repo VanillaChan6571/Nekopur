@@ -77,6 +77,10 @@ public class AsyncWorldCreationTask {
         craftServer.getLogger().info("[NekoAsync] AsyncWorldCreationTask.start() called for: " + creator.name());
         craftServer.getLogger().info("[NekoAsync] SpawnChunkBehavior: " + options.getSpawnChunkBehavior());
         craftServer.getLogger().info("[NekoAsync] PreGenerateRadius: " + options.getPreGenerateRadius());
+        if (options.getSpawnChunkBehavior() != AsyncWorldOptions.SpawnChunkBehavior.SKIP || options.isGenerateSpawn()) {
+            craftServer.getLogger().warning("[NekoAsync] Non-default world creation options may impact TPS. " +
+                    "spawnChunks=" + options.getSpawnChunkBehavior() + ", generateSpawn=" + options.isGenerateSpawn());
+        }
 
         // Check if world already exists
         World existingWorld = craftServer.getWorld(creator.name());

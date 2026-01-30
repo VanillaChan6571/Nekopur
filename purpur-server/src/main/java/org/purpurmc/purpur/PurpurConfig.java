@@ -59,6 +59,9 @@ public class PurpurConfig {
     static boolean verbose;
 
     public static void init(File configFile) {
+        if (configFile == null) {
+            configFile = new File("purpur.yml");
+        }
         CONFIG_FILE = configFile;
         config = new YamlConfiguration();
         try {
