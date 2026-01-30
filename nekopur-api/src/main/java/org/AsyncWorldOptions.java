@@ -170,9 +170,9 @@ public final class AsyncWorldOptions {
      * Builder for creating {@link AsyncWorldOptions} instances.
      */
     public static final class Builder {
-        private SpawnChunkBehavior spawnChunkBehavior = SpawnChunkBehavior.ASYNC_FIRE_AND_FORGET;
+        private SpawnChunkBehavior spawnChunkBehavior = SpawnChunkBehavior.SKIP;
         private @Nullable Consumer<AsyncWorldProgress> progressCallback = null;
-        private boolean generateSpawn = true;
+        private boolean generateSpawn = false;
         private @Nullable WorldTemplate template = null;
         private int preGenerateRadius = 0;
         private @Nullable Consumer<AsyncWorldProgress> preGenerateCallback = null;
