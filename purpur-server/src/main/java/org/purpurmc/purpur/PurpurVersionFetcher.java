@@ -85,7 +85,7 @@ public class PurpurVersionFetcher implements VersionFetcher {
         return switch (distance) {
             case DISTANCE_ERROR -> text("* Error obtaining version information", NamedTextColor.RED);
             case 0 -> text("* You are running the latest version", NamedTextColor.GREEN);
-            case DISTANCE_UNKNOWN -> text("* Nekopur (1.21.11@33b2924) ", NamedTextColor.LIGHT_PURPLE);
+            case DISTANCE_UNKNOWN -> text("* Unknown version", NamedTextColor.YELLOW);
             default -> text("* You are " + distance + " version(s) behind", NamedTextColor.YELLOW)
                 .append(Component.newline())
                 .append(text("Download the new version at: ")
@@ -105,7 +105,7 @@ public class PurpurVersionFetcher implements VersionFetcher {
                 final int latest = json.getAsJsonObject("builds").getAsJsonPrimitive("latest").getAsInt();
                 return latest - jenkinsBuild;
             } catch (final JsonSyntaxException ex) {
-                LOGGER.error("Error parsing json from Nekopur's downloads API", ex);
+                LOGGER.error("Error parsing json from Purpur's downloads API", ex);
                 return DISTANCE_ERROR;
             }
         } catch (final IOException e) {

@@ -65,3 +65,5 @@ run-clean/logs/latest.log
 /run-clean
 Codex_Claude_Reasoning.sh
 /plugin-stresstest
+applyAllPatches.log
+purpur-api/build.gradle.kts.patch.rej

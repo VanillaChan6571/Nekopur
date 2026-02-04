@@ -26,7 +26,6 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.purpurmc.purpur.command.PurpurCommand;
-import org.purpurmc.purpur.command.PurrWorldsCommand;
 
 import java.io.File;
 import java.io.IOException;
@@ -59,9 +58,6 @@ public class PurpurConfig {
     static boolean verbose;
 
     public static void init(File configFile) {
-        if (configFile == null) {
-            configFile = new File("purpur.yml");
-        }
         CONFIG_FILE = configFile;
         config = new YamlConfiguration();
         try {
@@ -77,7 +73,6 @@ public class PurpurConfig {
 
         commands = new HashMap<>();
         commands.put("purpur", new PurpurCommand("purpur"));
-        commands.put("purrworlds", new PurrWorldsCommand("purrworlds"));
 
         version = getInt("config-version", 47);
         set("config-version", 47);
@@ -237,15 +232,7 @@ public class PurpurConfig {
 
     public static String serverModName = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
     private static void serverModName() {
-        String configured = config.getString("settings.server-mod-name");
-        String brandName = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
-        if (configured == null || configured.isBlank() || "Purpur".equalsIgnoreCase(configured) || "Nekopur".equalsIgnoreCase(configured)) {
-            serverModName = brandName;
-            set("settings.server-mod-name", serverModName);
-            return;
-        }
-        serverModName = configured;
-        config.addDefault("settings.server-mod-name", serverModName);
+        serverModName = getString("settings.server-mod-name", serverModName);
     }
 
     public static double laggingThreshold = 19.0D;

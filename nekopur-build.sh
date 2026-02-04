@@ -22,7 +22,7 @@ fi
 echo "Using JAVA_HOME=${JAVA_HOME:-<unset>}"
 java -version 2>&1 | head -n 1 || true
 
-MAX_RETRIES=${NEKOPUR_BUILD_RETRIES:-5}
+MAX_RETRIES=${NEKOPUR_BUILD_RETRIES:-1}
 RETRY_DELAY_SEC=${NEKOPUR_BUILD_RETRY_DELAY_SEC:-5}
 
 attempt=1
