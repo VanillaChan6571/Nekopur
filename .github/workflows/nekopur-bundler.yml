@@ -3,7 +3,7 @@ name: Build Nekopur Bundler
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ ver/1.21.11 ]
 
 jobs:
   build:
