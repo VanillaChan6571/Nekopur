@@ -27,7 +27,7 @@
      spigot {
          enabled = true
          buildDataRef = "17f77cee7117ab9d6175f088ae8962bfd04e61a9"
-@@ -104,7 +_,21 @@
+@@ -104,7 +_,24 @@
      }
  }
  
@@ -35,7 +35,10 @@
 +// Purpur start - Rebrand
 +sourceSets {
 +    main {
-+        java { srcDir("../paper-server/src/main/java") }
++        java {
++            srcDir("../paper-server/src/main/java")
++            srcDir("../nekopur-server/src/main/java")
++        }
 +        resources { srcDir("../paper-server/src/main/resources") }
 +    }
 +    test {
