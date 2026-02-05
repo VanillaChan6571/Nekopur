@@ -43,7 +43,7 @@ See [PaperMC/Paper](https://github.com/PaperMC/Paper), and [PaperMC/Paperweight]
 
 ## bStats
 
-[![bStats Graph Data](https://bstats.org/signatures/server-implementation/Purpur.svg)](https://bstats.org/plugin/server-implementation/Nekopur)
+[![bStats Graph Data](https://bstats.org/signatures/server-implementation/Nekopur.svg)](https://bstats.org/plugin/server-implementation/Nekopur)
 
 
 ## API
