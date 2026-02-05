@@ -30,6 +30,7 @@ Neko.createWorldAsync(new WorldCreator("my_world"))
 - Directory creation
 - Template file copying (level.dat, region files)
 - Spawn chunk loading (via Paper's async chunk API)
+- Optional chunk pre-generation (if `preGenerateRadius` is set)
 
 ### What Runs on Main Thread (Required by Minecraft)
 
@@ -63,13 +64,31 @@ AsyncWorldOptions options = AsyncWorldOptions.builder()
     .build();
 ```
 
+Defaults:
+- `spawnChunks`: `SKIP`
+- `generateSpawn`: `false`
+- `preGenerateRadius`: `0` (disabled)
+
 #### SpawnChunkBehavior
 
 | Option | Description | Use Case |
 |--------|-------------|----------|
 | `SKIP` | Don't load spawn chunks | Fastest - for worlds where spawn doesn't matter |
-| `ASYNC_FIRE_AND_FORGET` | Load async, return immediately | Default - good balance |
+| `ASYNC_FIRE_AND_FORGET` | Load async, return immediately | Good balance |
 | `ASYNC_WAIT` | Load async, wait for completion | When spawn chunks must be ready |
+
+#### Pre-generation
+
+Use pre-generation when you need a playable area immediately (e.g., UHC).
+
+```java
+AsyncWorldOptions options = AsyncWorldOptions.builder()
+    .preGenerateRadius(32)  // Radius in chunks
+    .preGenerateCallback(progress -> {
+        getLogger().info("Pre-gen: " + (int) (progress.getProgress() * 100) + "%");
+    })
+    .build();
+```
 
 ### `WorldTemplate`
 
@@ -112,9 +131,13 @@ AsyncWorldOptions.builder()
 | `CREATING_DIRECTORY` | Creating world folder |
 | `COPYING_TEMPLATE` | Copying template files (if using template) |
 | `CREATING_STORAGE` | Setting up storage access |
+| `LOADING_WORLD_DATA` | Loading or creating world data (level.dat) |
+| `PARSING_WORLD_DATA` | Parsing world data NBT |
+| `CREATING_GENERATOR` | Creating level stem and chunk generator |
 | `CONSTRUCTING_LEVEL` | Building ServerLevel (main thread) |
 | `REGISTERING_WORLD` | Registering with server |
 | `LOADING_SPAWN_CHUNKS` | Loading spawn chunks async |
+| `PRE_GENERATING_CHUNKS` | Pre-generating chunks async |
 | `COMPLETED` | World is ready |
 | `FAILED` | Creation failed |
 
@@ -184,6 +207,22 @@ if (pool != null) {
     boolean shutdown = status.isShutdown();
 }
 ```
+
+## Async Unload API
+
+Unload worlds without blocking the main thread.
+
+```java
+// Quick discard (no save, delete files)
+Neko.getServer().unloadWorldAsync(world, UnloadOptions.discard());
+
+// Safe unload (save, keep files)
+Neko.getServer().unloadWorldAsync(world, UnloadOptions.safe());
+```
+
+Defaults for `UnloadOptions`:
+- `saveChunks`: `true`
+- `deleteWorldFolder`: `false`
 
 ### Void World for Building
 
