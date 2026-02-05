@@ -86,18 +86,18 @@
          attributes(
              "Main-Class" to "org.bukkit.craftbukkit.Main",
 -            "Implementation-Title" to "Paper",
-+            "Implementation-Title" to "Purpur", // Purpur
++            "Implementation-Title" to "Nekopur", // Nekopur
              "Implementation-Version" to implementationVersion,
              "Implementation-Vendor" to date,
 -            "Specification-Title" to "Paper",
-+            "Specification-Title" to "Purpur", // Purpur
++            "Specification-Title" to "Nekopur", // Nekopur
              "Specification-Version" to project.version,
 -            "Specification-Vendor" to "Paper Team",
 -            "Brand-Id" to "papermc:paper",
 -            "Brand-Name" to "Paper",
-+            "Specification-Vendor" to "Purpur Team", // Purpur
-+            "Brand-Id" to "purpurmc:purpur", // Purpur
-+            "Brand-Name" to "Purpur", // Purpur
++            "Specification-Vendor" to "Nekopur Team", // Nekopur
++            "Brand-Id" to "nekopur:nekopur", // Nekopur
++            "Brand-Name" to "Nekopur", // Nekopur
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,

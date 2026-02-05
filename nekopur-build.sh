@@ -29,7 +29,7 @@ attempt=1
 while true; do
   echo
   echo "Build attempt ${attempt}/${MAX_RETRIES}..."
-  if ./gradlew :purpur-server:createMojmapBundlerJar --no-daemon; then
+  if ./gradlew :nekopur-server:createNekopurMojmapBundlerJar --no-daemon; then
     break
   fi
 

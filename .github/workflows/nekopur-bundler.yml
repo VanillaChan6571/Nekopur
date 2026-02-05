@@ -36,7 +36,8 @@ jobs:
         run: .\gradlew.bat applyAllPatches
 
       - name: Build Nekopur Mojmap bundler jar
-        run: .\gradlew.bat :nekopur-server:createNekopurMojmapBundlerJar
+        shell: bash
+        run: ./nekopur-build.sh
 
       - name: Rename jar with version + git hash
         shell: pwsh
