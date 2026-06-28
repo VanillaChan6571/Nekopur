@@ -27,15 +27,19 @@ tasks.named("classes") {
     enabled = false
 }
 
-val purpurProject = project(":purpur-server")
-val purpurBundlerName = "purpur-bundler-${project.version}-mojmap.jar"
+// Nekopur - 26.x paperweight renamed createMojmapBundlerJar -> createBundlerJar (mojmap is the default, no reobf variant).
+// Reference the task output directly so we don't depend on the purpur bundler filename.
+// Nekopur - 26.x paperweight renamed createMojmapBundlerJar -> createBundlerJar, whose bundler jar is
+// "purpur-bundler-<version>.jar". Copy it by filename from purpur-server's libs dir (config-cache safe:
+// no cross-project task object reference) and rename to the Nekopur bundler name.
 val nekopurBundlerName = "nekopur-bundler-${project.version}-mojmap.jar"
-val purpurBundlerFile = purpurProject.layout.buildDirectory.dir("libs").map { it.file(purpurBundlerName) }
+val purpurBundlerSource = "purpur-bundler-${project.version}.jar"
 tasks.register<Copy>("createNekopurMojmapBundlerJar") {
-    dependsOn(":purpur-server:createMojmapBundlerJar")
-    from(purpurBundlerFile)
+    dependsOn(":purpur-server:createBundlerJar")
+    from(layout.projectDirectory.dir("../purpur-server/build/libs"))
+    include(purpurBundlerSource)
     into(layout.buildDirectory.dir("libs"))
-    rename(purpurBundlerName, nekopurBundlerName)
+    rename(purpurBundlerSource.replace(".", "\\."), nekopurBundlerName)
 }
 
 tasks.named("assemble") {
