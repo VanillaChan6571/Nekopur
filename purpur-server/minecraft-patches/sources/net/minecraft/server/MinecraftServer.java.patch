@@ -25,6 +25,34 @@
              getTPS(this.tickTimes1m, interval),
              getTPS(this.tickTimes5m, interval),
              getTPS(this.tickTimes15m, interval)
+@@ -738,7 +_,11 @@
+     // Paper end - rework world loading process
+         if (!serverLevelData.isInitialized()) {
+             try {
++                // Nekopur start - honor async generateSpawn(false): skip the main-thread spawn-point search (the async caller finds/sets the spawn itself)
++                org.nekopur.AsyncWorldOptions nekoAsyncOpts = org.nekopur.NekoServerImpl.getAsyncWorldOptions();
++                if (nekoAsyncOpts == null || nekoAsyncOpts.isGenerateSpawn()) {
+                 setInitialSpawn(serverLevel, serverLevelData, worldOptions.generateBonusChest(), isDebugWorld, serverLevel.levelLoadListener); // Paper - per world level load listener
++                } // Nekopur end
+                 serverLevelData.setInitialized(true);
+                 if (isDebugWorld) {
+                     this.setupDebugLevel(this.worldData);
+@@ -893,6 +_,7 @@
+         // CraftBukkit end
+         ChunkLoadCounter chunkLoadCounter = new ChunkLoadCounter();
+ 
++        if (!org.nekopur.NekoServerImpl.SKIP_SPAWN_PREP.get()) { // Nekopur - skip synchronous spawn-chunk force-load during async world creation (prevents main-thread freeze / player rubber-banding); async pregen loads chunks instead
+         if (true) { // CraftBukkit
+             chunkLoadCounter.track(serverLevel, () -> {
+                 TicketStorage ticketStorage = serverLevel.getDataStorage().get(TicketStorage.TYPE);
+@@ -910,6 +_,7 @@
+         } while (chunkLoadCounter.pendingChunks() > 0);
+ 
+         serverLevel.levelLoadListener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS); // Paper - per world load listener
++        } // Nekopur - end skip spawn-chunk force-load
+         serverLevel.setSpawnSettings(serverLevel.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
+         this.updateEffectiveRespawnData();
+         this.forceTicks = false; // CraftBukkit
 @@ -1014,6 +_,15 @@
  
          LOGGER.info("Stopping server");
