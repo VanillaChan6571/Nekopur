@@ -1,0 +1,57 @@
+name: Build Nekopur Bundler
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ ver/1.21.11 ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21+
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global --add safe.directory "$env:GITHUB_WORKSPACE"
+
+      - name: Apply patches
+        env:
+          GIT_AUTHOR_NAME: GitHub Actions
+          GIT_AUTHOR_EMAIL: actions@github.com
+          GIT_COMMITTER_NAME: GitHub Actions
+          GIT_COMMITTER_EMAIL: actions@github.com
+        run: .\gradlew.bat applyAllPatches
+
+      - name: Build Nekopur Mojmap bundler jar
+        shell: bash
+        run: ./nekopur-build.sh
+
+      - name: Rename jar with version + git hash
+        shell: pwsh
+        run: |
+          $verLine = (Select-String -Path gradle.properties -Pattern '^version').Line
+          $ver = $verLine.Split('=')[1].Trim()
+          $hash = (git rev-parse --short=7 HEAD).Trim()
+          $src = Get-ChildItem nekopur-server\build\libs\nekopur-bundler-*-mojmap.jar | Select-Object -First 1
+          if (-not $src) { throw "Bundler jar not found." }
+          $dest = "nekopur-server\build\libs\nekopur-bundler-$ver-@$hash-mojmap.jar"
+          Copy-Item $src.FullName $dest -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nekopur-bundler
+          path: nekopur-server\build\libs\nekopur-bundler-*-@*-mojmap.jar
