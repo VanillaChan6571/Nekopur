@@ -9,11 +9,12 @@
  idea {
      module {
          generatedSourceDirs.add(generatedDir.toFile())
-@@ -104,6 +_,18 @@
+@@ -104,6 +_,19 @@
      main {
          java {
              srcDir(generatedDir)
 +            srcDir(file("../paper-api/src/main/java"))
++            srcDir(file("../nekopur-api/src/main/java"))
 +        }
 +        resources {
 +            srcDir(file("../paper-api/src/main/resources"))

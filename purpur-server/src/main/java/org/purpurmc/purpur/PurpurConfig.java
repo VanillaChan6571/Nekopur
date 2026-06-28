@@ -26,6 +26,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.purpurmc.purpur.command.PurpurCommand;
+import org.purpurmc.purpur.command.PurrWorldsCommand;
 
 import java.io.File;
 import java.io.IOException;
@@ -73,6 +74,7 @@ public class PurpurConfig {
 
         commands = new HashMap<>();
         commands.put("purpur", new PurpurCommand("purpur"));
+        commands.put("purrworlds", new PurrWorldsCommand("purrworlds"));
 
         version = getInt("config-version", 48);
         set("config-version", 48);
