@@ -3,7 +3,7 @@ name: Build Nekopur Bundler
 on:
   workflow_dispatch:
   push:
-    branches: [ ver/1.21.11 ]
+    branches: [ ver/1.21.11, ver/26.1.2, ver/26.2 ]
 
 jobs:
   build:
@@ -42,11 +42,11 @@ jobs:
       - name: Rename jar with version + git hash
         shell: pwsh
         run: |
-          $verLine = (Select-String -Path gradle.properties -Pattern '^version').Line
-          $ver = $verLine.Split('=')[1].Trim()
           $hash = (git rev-parse --short=7 HEAD).Trim()
           $src = Get-ChildItem nekopur-server\build\libs\nekopur-bundler-*-mojmap.jar | Select-Object -First 1
           if (-not $src) { throw "Bundler jar not found." }
+          # Derive the version from the jar filename — gradle.properties has no 'version' line on 26.x
+          $ver = $src.BaseName -replace '^nekopur-bundler-', '' -replace '-mojmap$', ''
           $dest = "nekopur-server\build\libs\nekopur-bundler-$ver-@$hash-mojmap.jar"
           Copy-Item $src.FullName $dest -Force
 
