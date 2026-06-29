@@ -25,6 +25,34 @@
              getTPS(this.tickTimes1m, interval),
              getTPS(this.tickTimes5m, interval),
              getTPS(this.tickTimes15m, interval)
+@@ -767,7 +_,11 @@
+                         Objects.requireNonNullElse(worldCreator.forcedSpawnPitch(), LevelData.RespawnData.DEFAULT.pitch())
+                     ));
+                 } else {
++                    // Nekopur start - honor async generateSpawn(false): skip the main-thread spawn-point search (the async caller finds/sets the spawn itself)
++                    org.nekopur.AsyncWorldOptions nekoAsyncOpts = org.nekopur.NekoServerImpl.getAsyncWorldOptions();
++                    if (nekoAsyncOpts == null || nekoAsyncOpts.isGenerateSpawn()) {
+                     setInitialSpawn(overworld, levelData, worldOptions.generateBonusChest(), isDebug, overworld.levelLoadListener); // Paper - per world level load listener
++                    } // Nekopur end
+                 }
+                 // Paper end - Allow direct setting spawn location
+                 levelData.setInitialized(true);
+@@ -887,6 +_,7 @@
+         // CraftBukkit end
+         ChunkLoadCounter chunkLoadCounter = new ChunkLoadCounter();
+ 
++        if (!org.nekopur.NekoServerImpl.SKIP_SPAWN_PREP.get()) { // Nekopur - skip synchronous spawn-chunk force-load during async world creation (prevents main-thread freeze / player rubber-banding); async pregen loads chunks instead
+         if (true) { // CraftBukkit
+             chunkLoadCounter.track(level, () -> {
+                 TicketStorage savedTickets = level.getDataStorage().get(TicketStorage.TYPE);
+@@ -904,6 +_,7 @@
+         } while (chunkLoadCounter.pendingChunks() > 0);
+ 
+         level.levelLoadListener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS); // Paper - per world load listener
++        } // Nekopur - end skip spawn-chunk force-load
+         level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
+         this.updateEffectiveRespawnData();
+         this.forceTicks = false; // CraftBukkit
 @@ -1021,6 +_,15 @@
  
          LOGGER.info("Stopping server");
