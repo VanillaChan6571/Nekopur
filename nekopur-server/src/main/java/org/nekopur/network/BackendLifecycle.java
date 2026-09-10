@@ -1,8 +1,10 @@
 package org.nekopur.network;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Coordinates main-thread pause decisions with control-thread wake and heartbeat messages. */
 @NullMarked
@@ -16,6 +18,13 @@ final class BackendLifecycle {
     private boolean sleepingRequested;
     private boolean waking;
     private final boolean proxyManaged;
+    private @Nullable Consumer<String> transitions;
+    private boolean stallReported;
+
+    /** Reports every published state change, so a backend short of READY explains itself. */
+    void onTransition(Consumer<String> sink) {
+        this.transitions = sink;
+    }
 
     BackendLifecycle(boolean startSleeping) {
         this(startSleeping, false);
@@ -75,7 +84,13 @@ final class BackendLifecycle {
         boolean sleep = this.sleepingRequested && prepared && canSleep && players == 0;
         String state = !prepared ? "REGISTERING" : this.waking ? "WAKING"
             : this.sleepingRequested ? (sleep ? "SLEEPING" : "REGISTERING") : "READY";
+        PurroxyConnection.Snapshot previous = this.snapshot;
         this.snapshot = new PurroxyConnection.Snapshot(state, players);
+        if (this.transitions != null && !previous.state().equals(state)) {
+            this.transitions.accept("Nekopurr state " + previous.state() + " -> " + state
+                + " (prepared=" + prepared + ", canSleep=" + canSleep + ", players=" + players
+                + ", waking=" + this.waking + ", sleepRequested=" + this.sleepingRequested + ")");
+        }
         if (requested != null) {
             requested.complete(accepted);
         }
@@ -85,8 +100,16 @@ final class BackendLifecycle {
     PurroxyConnection.Snapshot heartbeat(long now) {
         PurroxyConnection.Snapshot current = this.snapshot;
         if (now - this.lastTick > TimeUnit.SECONDS.toNanos(10)) {
+            if (!this.stallReported && this.transitions != null) {
+                // Otherwise a stalled main thread is indistinguishable from a backend that never prepared.
+                this.stallReported = true;
+                this.transitions.accept("Nekopurr main thread has not ticked for "
+                    + TimeUnit.NANOSECONDS.toSeconds(now - this.lastTick)
+                    + "s; heartbeating REGISTERING instead of " + current.state());
+            }
             return new PurroxyConnection.Snapshot("REGISTERING", current.players());
         }
+        this.stallReported = false;
         if (current.state().equals("WAKING")) {
             this.wakingPublished = true;
         }

@@ -36,6 +36,7 @@ public final class NekopurrNetwork implements AutoCloseable {
         this.lifecycle = new BackendLifecycle(config.startSleeping(), config.authentication().equals("pairing"));
         this.connection = new PurroxyConnection(config, server.getPort(), server.getPlayerList().getMaxPlayers(),
             () -> this.lifecycle.heartbeat(System.nanoTime()), request -> this.lifecycle.wake(), server.server.getLogger());
+        this.lifecycle.onTransition(message -> server.server.getLogger().info(message));
         this.connection.enableSleep(request -> this.lifecycle.requestSleep());
         this.handoff = BackendHandoff.create(server, config, () -> {
             if (!this.prepared || this.destination == null) {
