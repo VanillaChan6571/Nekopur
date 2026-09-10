@@ -30,6 +30,17 @@
      }
  
      private void saveParentVehicle(final ValueOutput playerOutput) {
+@@ -717,6 +_,10 @@
+ 
+     @Override
+     public void tick() {
++        // Nekopur start - freeze source simulation during coordinated hub handoff
++        if (this.level().getServer().nekopurrNetwork != null && this.level().getServer().nekopurrNetwork.handoff != null
++            && this.level().getServer().nekopurrNetwork.handoff.isFrozen(this.getUUID())) return;
++        // Nekopur end - freeze source simulation
+         // CraftBukkit start
+         if (this.joining) {
+             this.joining = false;
 @@ -1185,6 +_,7 @@
              // Paper - moved up to sendClientboundPlayerCombatKillPacket()
              this.sendClientboundPlayerCombatKillPacket(event.getShowDeathMessages(), deathScreenMessage); // Paper - Expand PlayerDeathEvent

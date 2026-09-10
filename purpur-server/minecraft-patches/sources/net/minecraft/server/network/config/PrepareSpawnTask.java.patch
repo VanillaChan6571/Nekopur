@@ -1,0 +1,69 @@
+--- a/net/minecraft/server/network/config/PrepareSpawnTask.java
++++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
+@@ -40,6 +_,10 @@
+     private final com.mojang.authlib.GameProfile profile;
+     private final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener;
+     private boolean newPlayer;
++    // Nekopur start - durable coordinated hub arrival
++    private CompletableFuture<org.nekopur.network.BackendHandoff.@Nullable Arrival> handoffFuture = CompletableFuture.completedFuture(null);
++    private org.nekopur.network.BackendHandoff.@Nullable Arrival handoffArrival;
++    // Nekopur end - durable coordinated hub arrival
+ 
+     public PrepareSpawnTask(final MinecraftServer server, final com.mojang.authlib.GameProfile profile, final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener) {
+         this.profile = profile;
+@@ -59,6 +_,13 @@
+                 .map(tag -> TagValueInput.create(reporter, this.server.registryAccess(), tag));
+             // Paper start - move logic in Entity to here, to use bukkit supplied world UUID & reset to main world spawn if no valid world is found
+             this.newPlayer = loadedData.isEmpty(); // New players don't have saved data!
++            // Nekopur start - resolve ownership before preparing a player's destination
++            if (this.server.nekopurrNetwork != null && this.server.nekopurrNetwork.handoff != null) {
++                long savedGeneration = loadedData.flatMap(data -> data.child("BukkitValues"))
++                    .flatMap(data -> data.getLong(org.nekopur.network.BackendHandoff.GENERATION_KEY)).orElse(0L);
++                this.handoffFuture = this.server.nekopurrNetwork.handoff.prepareArrival(this.nameAndId.id(), savedGeneration);
++            }
++            // Nekopur end - resolve ownership
+             net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> resourceKey = null; // Paper
+             boolean[] invalidPlayerWorld = {false};
+             bukkitData: if (loadedData.isPresent()) {
+@@ -178,6 +_,10 @@
+         }
+ 
+         public PrepareSpawnTask.@Nullable Ready tick() {
++            // Nekopur start - wait for the durable activation before admitting this player
++            if (!PrepareSpawnTask.this.handoffFuture.isDone()) return null;
++            PrepareSpawnTask.this.handoffArrival = PrepareSpawnTask.this.handoffFuture.join();
++            // Nekopur end - wait for durable activation
+             if (!this.spawnPosition.isDone()) {
+                 return null;
+             }
+@@ -232,6 +_,18 @@
+                     this.spawnAngle = new Vec2(location.getYaw(), location.getPitch());
+                 }
+                 // Paper end - PlayerSpawnLocationEvent
++                // Nekopur start - configured map controls arrivals before player chunks are prepared
++                if (PrepareSpawnTask.this.server.nekopurrNetwork != null) {
++                    org.bukkit.Location mapArrival = PrepareSpawnTask.this.handoffArrival == null
++                        ? PrepareSpawnTask.this.server.nekopurrNetwork.arrivalLocation() : PrepareSpawnTask.this.handoffArrival.location();
++                    if (mapArrival != null) {
++                        this.spawnLevel = ((org.bukkit.craftbukkit.CraftWorld) mapArrival.getWorld()).getHandle();
++                        spawnPosition = io.papermc.paper.util.MCUtil.toVec3(mapArrival);
++                        this.spawnPosition = CompletableFuture.completedFuture(spawnPosition);
++                        this.spawnAngle = new Vec2(mapArrival.getYaw(), mapArrival.getPitch());
++                    }
++                }
++                // Nekopur end - configured map arrivals
+                 ChunkPos spawnChunk = ChunkPos.containing(BlockPos.containing(spawnPosition));
+                 this.chunkLoadFuture = ((ca.spottedleaf.moonrise.patches.chunk_system.MoonriseChunkLoadCounter)this.chunkLoadCounter).trackLoadWithRadius(this.spawnLevel, spawnChunk, 3, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, ca.spottedleaf.concurrentutil.util.Priority.HIGH, () -> { Preparing.this.spawnLevel.getChunkSource().addTicketWithRadius(TicketType.PLAYER_SPAWN, spawnChunk, 3); }); // Paper - rewrite chunk system
+                 PrepareSpawnTask.this.loadListener.start(LevelLoadListener.Stage.LOAD_PLAYER_CHUNKS, this.chunkLoadCounter.totalChunks());
+@@ -309,6 +_,11 @@
+                 }
+                 // Paper end - Entity#getEntitySpawnReason
+                 player.snapTo(this.spawnPosition, this.spawnAngle.x, this.spawnAngle.y);
++                // Nekopur start - apply the committed profile before initial player packets
++                if (PrepareSpawnTask.this.handoffArrival != null) {
++                    PrepareSpawnTask.this.server.nekopurrNetwork.handoff.applyArrival(player, PrepareSpawnTask.this.handoffArrival);
++                }
++                // Nekopur end - apply committed profile
+                 PrepareSpawnTask.this.server.getPlayerList().placeNewPlayer(connection, player, cookie);
+                 input.ifPresent(tag -> {
+                     player.loadAndSpawnEnderPearls(tag);

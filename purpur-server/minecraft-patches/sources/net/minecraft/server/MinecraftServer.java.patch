@@ -8,10 +8,11 @@
      public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
      public int autosavePeriod;
      // Paper - don't store the vanilla dispatcher
-@@ -334,6 +_,8 @@
+@@ -334,6 +_,9 @@
      public boolean isIteratingOverLevels = false; // Paper - Throw exception on world create while being ticked
      private final Set<String> pluginsBlockingSleep = new java.util.HashSet<>(); // Paper - API to allow/disallow tick sleeping
      public static final long SERVER_INIT = System.nanoTime(); // Paper - Lag compensation
++    public org.nekopur.network.@Nullable NekopurrNetwork nekopurrNetwork; // Nekopur - native Purroxy integration
 +    public boolean lagging = false; // Purpur - Lagging threshold
 +    protected boolean upnp = false; // Purpur - UPnP Port Forwarding
      // Paper start - improve tick loop
@@ -53,6 +54,14 @@
          level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
          this.updateEffectiveRespawnData();
          this.forceTicks = false; // CraftBukkit
+@@ -1012,6 +_,7 @@
+         }
+         if (!this.hasLoggedStop && this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
+         this.shutdownThread = Thread.currentThread(); // Paper - Improved watchdog support
++        if (this.nekopurrNetwork != null) this.nekopurrNetwork.close(); // Nekopur - stop independent control connection
+         org.spigotmc.WatchdogThread.doStop(); // Paper - Improved watchdog support
+         // CraftBukkit end
+         this.packetProcessor.close();
 @@ -1021,6 +_,15 @@
  
          LOGGER.info("Stopping server");
@@ -78,6 +87,14 @@
          this.isRestarting = isRestarting;
          this.hasLoggedStop = true; // Paper - Debugging
          if (this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
+@@ -1277,6 +_,7 @@
+             LOGGER.info("Running delayed init tasks");
+             new io.papermc.paper.threadedregions.RegionizedServerInitEvent().callEvent(); // Call Folia init event
+             this.server.getScheduler().mainThreadHeartbeat(); // run all 1 tick delay tasks during init,
++            this.nekopurrNetwork = org.nekopur.network.NekopurrNetwork.start(this); // Nekopur - start discovery after worlds and plugins
+             // this is going to be the first thing the tick process does anyway, so move done and run it after
+             // everything is init before watchdog tick.
+             // anything at 3+ won't be caught here but also will trip watchdog....
 @@ -1296,11 +_,21 @@
              }
              // Paper end - Add onboarding message for initial server start
@@ -101,19 +118,32 @@
              while (this.running) {
                  final long tickStart = System.nanoTime(); // Paper - improve tick loop
                  long thisTickNanos; // Paper - improve tick loop - diff on change, expect this to be tick interval
-@@ -1314,9 +_,11 @@
+@@ -1314,8 +_,10 @@
                      final long ticksBehind = Math.max(1L, this.tickSchedule.getPeriodsAhead(thisTickNanos, tickStart));
                      final long catchup = (long)Math.max(
                          1,
 -                        5 //ConfigHolder.getConfig().tickLoop.catchupTicks.getOrDefault(MoonriseConfig.TickLoop.DEFAULT_CATCHUP_TICKS).intValue()
 +                        org.purpurmc.purpur.PurpurConfig.tpsCatchup ? 5 : 1 //ConfigHolder.getConfig().tickLoop.catchupTicks.getOrDefault(MoonriseConfig.TickLoop.DEFAULT_CATCHUP_TICKS).intValue() // Purpur - Configurable TPS Catchup
                      );
- 
-+                    lagging = getTPS()[0] < org.purpurmc.purpur.PurpurConfig.laggingThreshold; // Purpur - Lagging threshold
 +
++                    lagging = getTPS()[0] < org.purpurmc.purpur.PurpurConfig.laggingThreshold; // Purpur - Lagging threshold
+ 
                      // adjust ticksBehind so that it is not greater-than catchup
                      if (ticksBehind - catchup > 0L) {
-                         final long difference = ticksBehind - catchup;
+@@ -1580,6 +_,13 @@
+         long nano = Util.getNanos();
+         int emptyTickThreshold = this.pauseWhenEmptySeconds() * 20;
+         this.removeDisabledPluginsBlockingSleep(); // Paper - API to allow/disallow tick sleeping
++        // Nekopur start - coordinate native pause with Purroxy readiness and wake requests
++        if (this.nekopurrNetwork != null) {
++            emptyTickThreshold = this.nekopurrNetwork.tick(this.playerList.getPlayerCount() == 0
++                && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty());
++            if (emptyTickThreshold == 0) this.emptyTicks = 0;
++        }
++        // Nekopur end - coordinate native pause
+         if (emptyTickThreshold > 0) {
+             if (this.playerList.getPlayerCount() == 0 && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty()) { // Paper - API to allow/disallow tick sleeping
+                 this.emptyTicks++;
 @@ -1947,7 +_,7 @@
      }
  
@@ -123,3 +153,11 @@
      }
  
      public ServerClockManager clockManager() {
+@@ -3163,6 +_,7 @@
+ 
+     // Paper start - API to check if the server is sleeping
+     public boolean isTickPaused() {
++        if (this.nekopurrNetwork != null) return this.emptyTicks > 0; // Nekopur - managed pause threshold is one tick
+         return this.emptyTicks > 0 && this.emptyTicks >= this.pauseWhenEmptySeconds() * 20;
+     }
+ 
