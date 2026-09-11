@@ -54,11 +54,11 @@
          level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
          this.updateEffectiveRespawnData();
          this.forceTicks = false; // CraftBukkit
-        if (this.nekopurrNetwork != null) this.nekopurrNetwork.close(); // Nekopur - stop independent control connection
-@@ -1021,6 +_,15 @@
+@@ -1021,6 +_,16 @@
  
          LOGGER.info("Stopping server");
          Commands.COMMAND_SENDING_POOL.shutdownNow(); // Paper - Perf: Async command map building; Shutdown and don't bother finishing
++        if (this.nekopurrNetwork != null) this.nekopurrNetwork.close(); // Nekopur - stop independent control connection
 +        // Purpur start - UPnP Port Forwarding
 +        if (upnp) {
 +            if (dev.omega24.upnp4j.UPnP4J.close(this.getPort(), dev.omega24.upnp4j.util.Protocol.TCP)) {
