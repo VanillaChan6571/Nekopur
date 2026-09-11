@@ -1,5 +1,23 @@
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
+@@ -215,7 +_,16 @@
+         // CraftBukkit start
+         component.withStyle(ChatFormatting.YELLOW);
+         Component joinMessage = component; // Paper - Adventure
+-        playerConnection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
++        // Nekopur start - a seamless arrival may keep the client's own position
++        // The client kept walking while the source froze and the handoff completed, so correcting it
++        // here is what yanks a moving player backwards. Skipping the sync lets the client keep its
++        // predicted position; the server adopts it from the next movement packet instead.
++        if (org.nekopur.network.BackendHandoff.suppressArrivalSync(this.server, player.getUUID())) {
++            org.nekopur.network.BackendHandoff.noteSuppressedArrivalSync(this.server, player.getUUID());
++        } else {
++            playerConnection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
++        }
++        // Nekopur end - a seamless arrival may keep the client's own position
+         ServerStatus status = this.server.getStatus();
+         if (status != null && !cookie.transferred()) {
+             player.sendServerStatus(status);
 @@ -313,6 +_,7 @@
              scoreboard.addPlayerToTeam(player.getScoreboardName(), collideRuleTeam);
          }

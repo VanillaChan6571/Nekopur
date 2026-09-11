@@ -160,6 +160,22 @@
              this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
          } else {
              ServerLevel level = this.player.level();
+@@ -1557,6 +_,15 @@
+                                     }
+                                     // Paper end - Prevent moving into unloaded chunks
+ 
++                                    // Nekopur start - adopt the client's position once after a seamless arrival
++                                    // The sync was suppressed so the client kept walking; its first report is
++                                    // therefore far from where the source froze it and would read as a speed
++                                    // violation. Accept it once, then resume ordinary validation.
++                                    if (org.nekopur.network.BackendHandoff.adoptArrivalPosition(this.server, this.player.getUUID())) {
++                                        this.player.absSnapTo(targetX, targetY, targetZ, targetYRot, targetXRot);
++                                        return;
++                                    }
++                                    // Nekopur end - adopt the client's position once
+                                     if (this.shouldCheckPlayerMovement(isFallFlying)) {
+                                         float metersPerTick = isFallFlying ? 300.0F : 100.0F;
+                                         if (movedDist - expectedDist > Math.max(metersPerTick, Mth.square(org.spigotmc.SpigotConfig.movedTooQuicklyMultiplier * (float) deltaPackets * speed))) {
 @@ -1633,7 +_,7 @@
                                          movedWrongly = true;
                                          if (event.getLogWarning())

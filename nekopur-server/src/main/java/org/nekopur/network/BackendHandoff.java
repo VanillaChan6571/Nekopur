@@ -40,6 +40,11 @@ public final class BackendHandoff implements AutoCloseable {
     // Given the id the client already holds, returns the id this backend will actually use: the same
     // one when it is free, otherwise a fresh one from this backend's player block.
     private java.util.function.IntUnaryOperator reserveEntityId = requested -> requested;
+    // Players whose arrival came from a handoff, so their position sync can be skipped once.
+    private final java.util.Set<UUID> arrived = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    // One-shot: the next movement packet from these players is taken as authoritative.
+    private final java.util.Set<UUID> adopting = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final boolean syncArrivalPosition;
     private final HandoffJournal journal;
     private final ConcurrentHashMap<UUID, UUID> exporting = new ConcurrentHashMap<>();
     private final Semaphore pending = new Semaphore(64);
@@ -58,8 +63,11 @@ public final class BackendHandoff implements AutoCloseable {
         if (!yaml.getString("transfers.profile", yaml.getString("handoff.profile", "hub-position")).equals("hub-position")) {
             throw new IllegalArgumentException("Only the explicit hub-position handoff profile is supported");
         }
+        // Kept true by default: correcting the client's position on arrival is the ordinary, safe
+        // behaviour. Set false to let a seamless arrival keep the position the client predicted.
+        boolean syncArrivalPosition = yaml.getBoolean("transfers.sync-arrival-position", true);
         return new BackendHandoff(server, config.serverId(), yaml.getString("transfers.map-id", yaml.getString("handoff.world-identity", "")),
-            yaml.getString("transfers.map-revision", yaml.getString("handoff.map-revision", "")), world);
+            yaml.getString("transfers.map-revision", yaml.getString("handoff.map-revision", "")), world, syncArrivalPosition);
     }
 
     void assignedName(String name) {
@@ -67,8 +75,9 @@ public final class BackendHandoff implements AutoCloseable {
     }
 
     private BackendHandoff(MinecraftServer server, String serverId, String worldIdentity,
-                           String mapRevision, Supplier<World> world) throws Exception {
+                           String mapRevision, Supplier<World> world, boolean syncArrivalPosition) throws Exception {
         new HubSnapshot(worldIdentity, mapRevision, 0, 0, 0, 0, 0, 0, 0, 0);
+        this.syncArrivalPosition = syncArrivalPosition;
         this.server = server;
         this.serverId = serverId;
         this.worldIdentity = worldIdentity;
@@ -88,6 +97,8 @@ public final class BackendHandoff implements AutoCloseable {
     }
 
     CompletableFuture<JsonObject> handle(JsonObject message) {
+        java.util.concurrent.atomic.AtomicReference<java.util.List<Integer>> tracked =
+            new java.util.concurrent.atomic.AtomicReference<>(java.util.List.of());
         if (!this.pending.tryAcquire()) {
             return CompletableFuture.failedFuture(new IllegalStateException("Too many pending handoff operations"));
         }
@@ -117,6 +128,9 @@ public final class BackendHandoff implements AutoCloseable {
                 case "fence" -> {
                     UUID claim = UUID.randomUUID();
                     yield onMain(() -> {
+                        // The entity tracker is main-thread state, so read it here rather than when
+                        // the reply is assembled on the IO thread.
+                        tracked.set(clearTrackedEntities(player));
                         HandoffJournal.Entry entry = require(player, transfer, generation, HandoffJournal.Role.SOURCE);
                         if (entry.phase() == HandoffJournal.Phase.EXPORTED && System.currentTimeMillis() >= entry.expiresAtMillis()) {
                             throw new IllegalStateException("Source snapshot expired before fencing");
@@ -160,6 +174,11 @@ public final class BackendHandoff implements AutoCloseable {
             JsonObject reply = new JsonObject();
             reply.addProperty("status", "OK");
             reply.add("entry", GSON.toJsonTree(entry));
+            if (!tracked.get().isEmpty()) {
+                // The proxy removes these from the client itself, so a source that dies between here
+                // and the switch cannot leave the client holding entities nothing will ever clear.
+                reply.add("trackedEntities", GSON.toJsonTree(tracked.get()));
+            }
             return reply;
         }).whenComplete((result, failure) -> this.pending.release());
     }
@@ -279,9 +298,79 @@ public final class BackendHandoff implements AutoCloseable {
         this.reserveEntityId = reservation;
     }
 
+    /**
+     * True when this player arrived through a seamless handoff and the arrival position sync should
+     * be skipped, so a client that kept moving is not pulled back to where the source froze it.
+     */
+    public static boolean suppressArrivalSync(MinecraftServer server, UUID player) {
+        BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
+        return handoff != null && handoff.syncArrivalPosition == false && handoff.arrived.contains(player);
+    }
+
+    /** Records that the sync was skipped, so the next client position is adopted rather than rejected. */
+    public static void noteSuppressedArrivalSync(MinecraftServer server, UUID player) {
+        BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
+        if (handoff != null) {
+            handoff.arrived.remove(player);
+            handoff.adopting.add(player);
+            server.server.getLogger().info("Nekopurr kept the client's own position on arrival for " + player);
+        }
+    }
+
+    /**
+     * Consumes the one-shot permission to take the client's reported position verbatim. Only ever true
+     * for the first movement packet after an arrival whose position sync was suppressed.
+     */
+    public static boolean adoptArrivalPosition(MinecraftServer server, UUID player) {
+        BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
+        return handoff != null && handoff.adopting.remove(player);
+    }
+
     public void applyArrival(ServerPlayer player, Arrival arrival) {
+        this.arrived.add(player.getUUID());
         player.getBukkitEntity().getPersistentDataContainer().set(GENERATION, PersistentDataType.LONG, arrival.generation());
         player.setDeltaMovement(arrival.snapshot().velocityX(), arrival.snapshot().velocityY(), arrival.snapshot().velocityZ());
+    }
+
+    /**
+     * Every entity this backend has actually sent to that client, except the client's own player.
+     * Taken from the tracker rather than inferred, so it is exact; other players are included, since
+     * their entities are in the client's table too and would otherwise remain as frozen copies.
+     */
+    private java.util.List<Integer> trackedEntities(UUID player) {
+        ServerPlayer viewer = this.server.getPlayerList().getPlayer(player);
+        if (viewer == null) {
+            return java.util.List.of();
+        }
+        java.util.List<Integer> ids = new java.util.ArrayList<>();
+        for (var tracked : viewer.level().getChunkSource().chunkMap.entityMap.int2ObjectEntrySet()) {
+            if (tracked.getIntKey() != viewer.getId() && tracked.getValue().seenBy.contains(viewer.connection)) {
+                ids.add(tracked.getIntKey());
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Removes from the client every entity this backend had shown it, and reports what was removed.
+     * Done at fence, while the player is frozen and before the destination sends anything, so the
+     * client's entity table is empty when the destination starts populating it. Without this the
+     * client keeps this server's entities and their ids alias the destination's own, which leaves
+     * NPCs visible but unclickable.
+     */
+    private java.util.List<Integer> clearTrackedEntities(UUID player) {
+        ServerPlayer viewer = this.server.getPlayerList().getPlayer(player);
+        java.util.List<Integer> ids = trackedEntities(player);
+        if (viewer != null && !ids.isEmpty()) {
+            int[] removed = new int[ids.size()];
+            for (int index = 0; index < removed.length; index++) {
+                removed[index] = ids.get(index);
+            }
+            viewer.connection.send(new net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket(removed));
+            this.server.server.getLogger().info("Nekopurr cleared " + removed.length
+                + " tracked entities from a handed-over client");
+        }
+        return ids;
     }
 
     private <T> CompletableFuture<T> onMain(Supplier<T> operation) {
