@@ -54,14 +54,7 @@
          level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
          this.updateEffectiveRespawnData();
          this.forceTicks = false; // CraftBukkit
-@@ -1012,6 +_,7 @@
-         }
-         if (!this.hasLoggedStop && this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
-         this.shutdownThread = Thread.currentThread(); // Paper - Improved watchdog support
-+        if (this.nekopurrNetwork != null) this.nekopurrNetwork.close(); // Nekopur - stop independent control connection
-         org.spigotmc.WatchdogThread.doStop(); // Paper - Improved watchdog support
-         // CraftBukkit end
-         this.packetProcessor.close();
+        if (this.nekopurrNetwork != null) this.nekopurrNetwork.close(); // Nekopur - stop independent control connection
 @@ -1021,6 +_,15 @@
  
          LOGGER.info("Stopping server");
