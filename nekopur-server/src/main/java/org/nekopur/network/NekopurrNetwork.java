@@ -26,6 +26,7 @@ public final class NekopurrNetwork implements AutoCloseable {
     private boolean prepared;
     private @Nullable World destination;
     private @Nullable CompletableFuture<Void> preparation;
+    private final java.util.concurrent.atomic.AtomicInteger playerIds = new java.util.concurrent.atomic.AtomicInteger();
     private long preparationStarted;
     private boolean preparationStallReported;
     private boolean destinationReplacedReported;
@@ -46,7 +47,13 @@ public final class NekopurrNetwork implements AutoCloseable {
         });
         if (this.handoff != null) {
             this.connection.enableHandoff(this.handoff.capabilities(), this.handoff::handle);
-            this.connection.onAssignedName(this.handoff::assignedName);
+            this.handoff.onReserveEntityId(this::reserveEntityId);
+            this.connection.onAssignedName(name -> {
+                this.handoff.assignedName(name);
+                // A first enrolment learns its range only now; raising is monotonic, so applying it
+                // late is safe and the persisted value applies from the next startup onwards.
+                applyEntityIdBase(this.connection.entityIdBase());
+            });
         }
     }
 
@@ -57,6 +64,10 @@ public final class NekopurrNetwork implements AutoCloseable {
                 return null;
             }
             NekopurrNetwork network = new NekopurrNetwork(server, config);
+            // Runs after worlds and plugins, so entities already present keep their low ids and only
+            // later allocations (players above all) move clear of them. Purroxy is the authority for
+            // the range; the configured value is a floor for backends that are not paired.
+            network.applyEntityIdBase(Math.max(config.entityIdBase(), network.connection.entityIdBase()));
             network.prepareDestination();
             network.connection.start();
             return network;
@@ -113,6 +124,48 @@ public final class NekopurrNetwork implements AutoCloseable {
             this.preparationStarted = System.nanoTime();
             this.preparationStallReported = false;
         }
+    }
+
+    private void applyEntityIdBase(int base) {
+        if (base > 0) {
+            this.playerIds.updateAndGet(current -> Math.max(current, base));
+        }
+    }
+
+    /**
+     * Allocates an entity id for an arriving player from this backend's own range. World entities keep
+     * the ordinary low ids; only players are lifted clear, so a player id minted here cannot collide
+     * with another backend's entities, and with distinct bases cannot collide with its players either.
+     * Returns 0 when no range is assigned, leaving the normal allocator in charge.
+     */
+    public int nextPlayerEntityId(net.minecraft.server.level.ServerLevel level) {
+        if (this.playerIds.get() <= 0) {
+            return 0;
+        }
+        int id;
+        do {
+            id = this.playerIds.incrementAndGet();
+        } while (level.getChunkSource().hasEntityWithId(id));
+        return id;
+    }
+
+    /**
+     * Decides at stage time which entity id an arriving player will use, so the proxy knows before it
+     * opens the connection whether the client keeps its id or must be reset.
+     */
+    private int reserveEntityId(int requested) {
+        World target = this.destination;
+        net.minecraft.server.level.ServerLevel level = target == null ? this.server.overworld()
+            : ((org.bukkit.craftbukkit.CraftWorld) target).getHandle();
+        if (claims(requested) && !level.getChunkSource().hasEntityWithId(requested)) {
+            return requested;
+        }
+        return nextPlayerEntityId(level);
+    }
+
+    /** True when this backend may keep an id a client already holds, rather than minting a new one. */
+    public boolean claims(int requestedEntityId) {
+        return requestedEntityId > 0 && this.playerIds.get() > 0;
     }
 
     /** Called before vanilla's pause decision. A READY network server must keep world ticks running. */

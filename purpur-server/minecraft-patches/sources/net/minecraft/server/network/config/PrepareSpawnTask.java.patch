@@ -55,6 +55,36 @@
                  ChunkPos spawnChunk = ChunkPos.containing(BlockPos.containing(spawnPosition));
                  this.chunkLoadFuture = ((ca.spottedleaf.moonrise.patches.chunk_system.MoonriseChunkLoadCounter)this.chunkLoadCounter).trackLoadWithRadius(this.spawnLevel, spawnChunk, 3, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, ca.spottedleaf.concurrentutil.util.Priority.HIGH, () -> { Preparing.this.spawnLevel.getChunkSource().addTicketWithRadius(TicketType.PLAYER_SPAWN, spawnChunk, 3); }); // Paper - rewrite chunk system
                  PrepareSpawnTask.this.loadListener.start(LevelLoadListener.Stage.LOAD_PLAYER_CHUNKS, this.chunkLoadCounter.totalChunks());
+@@ -280,6 +_,29 @@
+                 player = new ServerPlayer(PrepareSpawnTask.this.server, this.spawnLevel, cookie.gameProfile(), cookie.clientInformation());
+             }
+             // Paper end - configuration api - possibly use legacy saved server player instance
++            // Nekopur start - allocate player ids clear of world entities, keeping a handed-over id
++            if (PrepareSpawnTask.this.server.nekopurrNetwork != null) {
++                final org.nekopur.network.NekopurrNetwork network = PrepareSpawnTask.this.server.nekopurrNetwork;
++                final int requestedEntityId = PrepareSpawnTask.this.handoffArrival == null
++                    ? 0 : PrepareSpawnTask.this.handoffArrival.requestedEntityId();
++                if (network.claims(requestedEntityId) && !this.spawnLevel.getChunkSource().hasEntityWithId(requestedEntityId)) {
++                    // The client already holds this id, so keeping it avoids resetting the client.
++                    player.setId(requestedEntityId);
++                    PrepareSpawnTask.this.server.server.getLogger().info("Nekopurr kept entity id "
++                        + requestedEntityId + " for an arriving player");
++                } else {
++                    // Players allocate from this backend's own range; world entities keep the low ids.
++                    final int allocated = network.nextPlayerEntityId(this.spawnLevel);
++                    if (allocated > 0) {
++                        if (requestedEntityId > 0) {
++                            PrepareSpawnTask.this.server.server.getLogger().warning("Nekopurr could not keep entity id "
++                                + requestedEntityId + " for an arriving player; it is already in use. The proxy must reset the client.");
++                        }
++                        player.setId(allocated);
++                    }
++                }
++            }
++            // Nekopur end - allocate player ids clear of world entities
+ 
+             try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
+                 Optional<ValueInput> input = PrepareSpawnTask.this.server
 @@ -309,6 +_,11 @@
                  }
                  // Paper end - Entity#getEntitySpawnReason

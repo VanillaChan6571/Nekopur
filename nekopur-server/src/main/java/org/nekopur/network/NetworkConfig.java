@@ -14,9 +14,15 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
                             String advertisedHost, int advertisedPort, String group, String map,
                             int safeLimit, String region, boolean startSleeping, Path keyStore,
                             String passwordEnvironment, Path proxyCa, String authentication,
-                            String pairingToken, Path identityFile, Path challengeFile) {
+                            String pairingToken, Path identityFile, Path challengeFile, int entityIdBase) {
     /** Shared enrollment secret Purroxy publishes; administrators upload it into the server directory. */
     public static final String CHALLENGE_FILE = "purroxy.challenge";
+    /**
+     * Players allocate from a block starting here; world entities keep vanilla's own low counter.
+     * Deliberately near the top of the int range: vanilla allocates an id per mob, item and arrow, so
+     * a low block would be overrun within days of uptime. Purroxy assigns the real block when paired.
+     */
+    public static final int DEFAULT_ENTITY_ID_BASE = 1_900_000_000;
 
     public NetworkConfig(boolean enabled, String proxyHost, int proxyPort, String serverId,
                          String advertisedHost, int advertisedPort, String group, String map,
@@ -25,8 +31,19 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
         this(enabled, proxyHost, proxyPort, serverId, advertisedHost, advertisedPort, group, map,
             safeLimit, region, startSleeping, keyStore, passwordEnvironment, proxyCa, "certificates", "",
             keyStore.toAbsolutePath().getParent().resolve("nekopurr-network/identity.json"),
-            keyStore.toAbsolutePath().getParent().resolve(CHALLENGE_FILE));
+            keyStore.toAbsolutePath().getParent().resolve(CHALLENGE_FILE), DEFAULT_ENTITY_ID_BASE);
     }
+    /** Keeps callers that predate the entity id base on the default. */
+    public NetworkConfig(boolean enabled, String proxyHost, int proxyPort, String serverId,
+                         String advertisedHost, int advertisedPort, String group, String map,
+                         int safeLimit, String region, boolean startSleeping, Path keyStore,
+                         String passwordEnvironment, Path proxyCa, String authentication,
+                         String pairingToken, Path identityFile, Path challengeFile) {
+        this(enabled, proxyHost, proxyPort, serverId, advertisedHost, advertisedPort, group, map,
+            safeLimit, region, startSleeping, keyStore, passwordEnvironment, proxyCa, authentication,
+            pairingToken, identityFile, challengeFile, DEFAULT_ENTITY_ID_BASE);
+    }
+
     public static NetworkConfig load(Path path) throws IOException, InvalidConfigurationException {
         if (!Files.exists(path)) {
             Files.writeString(path, """
@@ -91,7 +108,22 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
             directory.resolve(yaml.getString("tls.key-store", "nekopurr-backend.p12")),
             yaml.getString("tls.password-environment", "NEKOPURR_KEYSTORE_PASSWORD"),
             directory.resolve(yaml.getString("tls.proxy-ca", "purroxy-ca.crt")), authentication,
-            challenge(yaml, challengeFile), directory.resolve("nekopurr-network/identity.json"), challengeFile);
+            challenge(yaml, challengeFile), directory.resolve("nekopurr-network/identity.json"), challengeFile,
+            entityIdBase(yaml));
+    }
+
+    /**
+     * Entity ids allocated after startup begin above this. A handoff asks the destination to keep the
+     * id the client already holds, which only works while that id is free; world entities present at
+     * boot otherwise occupy exactly the low range players would land in. Set 0 to disable.
+     * Give each backend a different base to also separate their players from one another.
+     */
+    private static int entityIdBase(YamlConfiguration yaml) {
+        int base = yaml.getInt("server.entity-id-base", DEFAULT_ENTITY_ID_BASE);
+        if (base < 0 || base > 2_100_000_000) {
+            throw new IllegalArgumentException("server.entity-id-base must be between 0 and 2100000000");
+        }
+        return base;
     }
 
     /** Prefers an uploaded challenge file so administrators never edit the YAML to enroll a backend. */

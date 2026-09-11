@@ -20,13 +20,15 @@ final class HandoffJournal {
     enum Role { SOURCE, DESTINATION }
     enum Phase { EXPORTED, STAGED, FENCED, COMMITTED, ACTIVATED, RELEASED, ABORTED }
 
+    // requestedEntityId is 0 when the coordinator asked for no particular id; 0 is never allocated
+    // by ServerLevel.getNextEntityId(), so it is a safe "unset" for records written before this field.
     record Entry(UUID transfer, UUID player, long generation, String source, String destination,
-                 Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis) {
+                 Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis, int requestedEntityId) {
         Entry {
             if (transfer == null || player == null || generation < 1 || source == null || destination == null
                 || !source.matches("[a-z0-9][a-z0-9_-]{0,63}")
                 || !destination.matches("[a-z0-9][a-z0-9_-]{0,63}") || source.equals(destination)
-                || role == null || phase == null || snapshot == null) {
+                || role == null || phase == null || snapshot == null || requestedEntityId < 0) {
                 throw new IllegalArgumentException("Invalid handoff record");
             }
             if (role == Role.SOURCE && (phase == Phase.STAGED || phase == Phase.COMMITTED || phase == Phase.ACTIVATED)
@@ -35,8 +37,15 @@ final class HandoffJournal {
             }
         }
 
+        /** A record that requests no particular entity id, so the destination allocates its own. */
+        Entry(UUID transfer, UUID player, long generation, String source, String destination,
+              Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis) {
+            this(transfer, player, generation, source, destination, role, phase, snapshot, expiresAtMillis, 0);
+        }
+
         Entry withPhase(Phase next) {
-            return new Entry(transfer, player, generation, source, destination, role, next, snapshot, expiresAtMillis);
+            return new Entry(transfer, player, generation, source, destination, role, next, snapshot,
+                expiresAtMillis, requestedEntityId);
         }
     }
 

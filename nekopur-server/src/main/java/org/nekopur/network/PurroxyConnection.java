@@ -43,6 +43,12 @@ public final class PurroxyConnection implements AutoCloseable {
     private final JsonObject resume;
     private final SSLContext tls;
     private final @Nullable BackendPairing pairing;
+
+    /** The entity id range Purroxy assigned this backend, or 0 when it has assigned none. */
+    int entityIdBase() {
+        return this.pairing == null ? 0 : this.pairing.entityIdBase();
+    }
+
     private final Supplier<Snapshot> snapshot;
     private final Consumer<UUID> wake;
     private final Logger logger;

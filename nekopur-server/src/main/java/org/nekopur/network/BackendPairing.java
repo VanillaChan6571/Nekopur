@@ -25,7 +25,14 @@ import org.jspecify.annotations.Nullable;
 /** Persists the backend instance and verifies the proxy certificate pinned in its enrollment challenge. */
 @NullMarked
 final class BackendPairing {
-    private record Identity(UUID instance, String pin, String token, String credential, String name) {}
+    // entityIdBase is assigned by Purroxy, which is the authority for id ranges as it is for names.
+    // Persisted so a restart applies it at startup rather than waiting for the registration reply.
+    private record Identity(UUID instance, String pin, String token, String credential, String name,
+                            int entityIdBase) {
+        Identity(UUID instance, String pin, String token, String credential, String name) {
+            this(instance, pin, token, credential, name, 0);
+        }
+    }
 
     private static final Gson GSON = new Gson();
     private final Path file;
@@ -100,7 +107,12 @@ final class BackendPairing {
             || !this.identity.name().isEmpty() && !this.identity.name().equals(name)) {
             throw new IOException("Purroxy returned an invalid or changed permanent server identity");
         }
-        Identity next = new Identity(this.identity.instance(), this.identity.pin(), "", credential, name);
+        int entityIdBase = message.has("entityIdBase") ? message.get("entityIdBase").getAsInt() : 0;
+        if (entityIdBase < 0) {
+            throw new IOException("Purroxy returned an invalid entity id base");
+        }
+        Identity next = new Identity(this.identity.instance(), this.identity.pin(), "", credential, name,
+            entityIdBase);
         if (!next.equals(this.identity)) {
             save(next); // Persist before the first heartbeat confirms enrollment to Purroxy.
             this.identity = next;
@@ -164,6 +176,11 @@ final class BackendPairing {
         };
         context.init(null, new javax.net.ssl.TrustManager[]{trust}, null);
         return context;
+    }
+
+    /** The entity id range Purroxy assigned this backend, or 0 before one has been assigned. */
+    synchronized int entityIdBase() {
+        return this.identity.entityIdBase();
     }
 
     /** Removes the shared challenge once this backend holds its own credential. */

@@ -26,7 +26,7 @@ public final class BackendHandoff implements AutoCloseable {
     public static final String GENERATION_KEY = "nekopurr:handoff_generation";
     private static final NamespacedKey GENERATION = new NamespacedKey("nekopurr", "handoff_generation");
     private static final Gson GSON = new Gson();
-    public record Arrival(long generation, HubSnapshot snapshot, World world) {
+    public record Arrival(long generation, HubSnapshot snapshot, World world, int requestedEntityId) {
         public Location location() {
             return new Location(world, snapshot.x(), snapshot.y(), snapshot.z(), snapshot.yaw(), snapshot.pitch());
         }
@@ -37,6 +37,9 @@ public final class BackendHandoff implements AutoCloseable {
     private final String worldIdentity;
     private final String mapRevision;
     private final Supplier<World> world;
+    // Given the id the client already holds, returns the id this backend will actually use: the same
+    // one when it is free, otherwise a fresh one from this backend's player block.
+    private java.util.function.IntUnaryOperator reserveEntityId = requested -> requested;
     private final HandoffJournal journal;
     private final ConcurrentHashMap<UUID, UUID> exporting = new ConcurrentHashMap<>();
     private final Semaphore pending = new Semaphore(64);
@@ -219,7 +222,18 @@ public final class BackendHandoff implements AutoCloseable {
             || expires <= System.currentTimeMillis() || expires - System.currentTimeMillis() > 60000) {
             throw new IllegalArgumentException("Incompatible or expired hub handoff");
         }
-        return new HandoffJournal.Entry(transfer, player, generation, source, destination, role, phase, snapshot, expires);
+        // Optional: an absent or zero id means the destination allocates its own, which is the
+        // normal visible switch. Only a seamless transfer that keeps the client in PLAY asks for one.
+        int requestedEntityId = request.has("requestedEntityId") ? request.get("requestedEntityId").getAsInt() : 0;
+        if (requestedEntityId < 0) {
+            throw new IllegalArgumentException("Invalid requested entity id");
+        }
+        if (role == HandoffJournal.Role.DESTINATION) {
+            // Reserve now, before the client connects, so the reply tells the proxy which id it gets.
+            requestedEntityId = this.reserveEntityId.applyAsInt(requestedEntityId);
+        }
+        return new HandoffJournal.Entry(transfer, player, generation, source, destination, role, phase, snapshot,
+            expires, requestedEntityId);
     }
 
     private HandoffJournal.Entry require(UUID player, UUID transfer, long generation, HandoffJournal.Role role) {
@@ -257,7 +271,12 @@ public final class BackendHandoff implements AutoCloseable {
         }
         World target = this.world.get();
         return onIo(() -> this.journal.transition(player, entry.transfer(), entry.generation(), HandoffJournal.Phase.ACTIVATED))
-            .thenApply(active -> new Arrival(active.generation(), active.snapshot(), target));
+            .thenApply(active -> new Arrival(active.generation(), active.snapshot(), target, active.requestedEntityId()));
+    }
+
+    /** Supplies the reservation strategy; the proxy learns the result from the stage reply. */
+    public void onReserveEntityId(java.util.function.IntUnaryOperator reservation) {
+        this.reserveEntityId = reservation;
     }
 
     public void applyArrival(ServerPlayer player, Arrival arrival) {
