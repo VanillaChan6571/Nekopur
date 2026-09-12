@@ -23,7 +23,8 @@ final class HandoffJournal {
     // requestedEntityId is 0 when the coordinator asked for no particular id; 0 is never allocated
     // by ServerLevel.getNextEntityId(), so it is a safe "unset" for records written before this field.
     record Entry(UUID transfer, UUID player, long generation, String source, String destination,
-                 Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis, int requestedEntityId) {
+                 Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis, int requestedEntityId,
+                 boolean visibleArrival, boolean seamlessArrivalApproved) {
         Entry {
             if (transfer == null || player == null || generation < 1 || source == null || destination == null
                 || !source.matches("[a-z0-9][a-z0-9_-]{0,63}")
@@ -40,12 +41,29 @@ final class HandoffJournal {
         /** A record that requests no particular entity id, so the destination allocates its own. */
         Entry(UUID transfer, UUID player, long generation, String source, String destination,
               Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis) {
-            this(transfer, player, generation, source, destination, role, phase, snapshot, expiresAtMillis, 0);
+            this(transfer, player, generation, source, destination, role, phase, snapshot, expiresAtMillis,
+                0, false, false);
+        }
+
+        Entry(UUID transfer, UUID player, long generation, String source, String destination,
+              Role role, Phase phase, HubSnapshot snapshot, long expiresAtMillis, int requestedEntityId) {
+            this(transfer, player, generation, source, destination, role, phase, snapshot, expiresAtMillis,
+                requestedEntityId, false, false);
         }
 
         Entry withPhase(Phase next) {
             return new Entry(transfer, player, generation, source, destination, role, next, snapshot,
-                expiresAtMillis, requestedEntityId);
+                expiresAtMillis, requestedEntityId, visibleArrival, seamlessArrivalApproved);
+        }
+
+        Entry withVisibleArrival() {
+            return new Entry(transfer, player, generation, source, destination, role, phase, snapshot,
+                expiresAtMillis, requestedEntityId, true, seamlessArrivalApproved);
+        }
+
+        Entry withSeamlessArrivalApproved() {
+            return new Entry(transfer, player, generation, source, destination, role, phase, snapshot,
+                expiresAtMillis, requestedEntityId, visibleArrival, true);
         }
     }
 
@@ -124,6 +142,37 @@ final class HandoffJournal {
             throw new IllegalStateException("Invalid handoff transition: " + entry.phase() + " -> " + next);
         }
         Entry updated = entry.withPhase(next);
+        persist(updated);
+        return updated;
+    }
+
+    synchronized Entry requireVisibleArrival(UUID player, UUID transfer, long generation) throws IOException {
+        Entry entry = this.entries.get(player);
+        if (entry == null || !entry.transfer().equals(transfer) || entry.generation() != generation
+            || entry.role() != Role.DESTINATION
+            || entry.phase() != Phase.COMMITTED && entry.phase() != Phase.ACTIVATED) {
+            throw new IllegalStateException("Visible arrival does not match a committed destination");
+        }
+        if (entry.visibleArrival()) {
+            return entry;
+        }
+        Entry updated = entry.withVisibleArrival();
+        persist(updated);
+        return updated;
+    }
+
+    synchronized Entry approveSeamlessArrival(UUID player, UUID transfer, long generation) throws IOException {
+        Entry entry = this.entries.get(player);
+        if (entry == null || !entry.transfer().equals(transfer) || entry.generation() != generation
+            || entry.role() != Role.DESTINATION
+            || entry.phase() != Phase.COMMITTED && entry.phase() != Phase.ACTIVATED
+            || entry.visibleArrival()) {
+            throw new IllegalStateException("Seamless arrival does not match a committed destination");
+        }
+        if (entry.seamlessArrivalApproved()) {
+            return entry;
+        }
+        Entry updated = entry.withSeamlessArrivalApproved();
         persist(updated);
         return updated;
     }

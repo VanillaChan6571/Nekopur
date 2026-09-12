@@ -24,9 +24,11 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public final class BackendHandoff implements AutoCloseable {
     public static final String GENERATION_KEY = "nekopurr:handoff_generation";
+    private static final double MAX_PREDICTED_DISTANCE_SQUARED = 64.0D * 64.0D;
     private static final NamespacedKey GENERATION = new NamespacedKey("nekopurr", "handoff_generation");
     private static final Gson GSON = new Gson();
-    public record Arrival(long generation, HubSnapshot snapshot, World world, int requestedEntityId) {
+    public record Arrival(long generation, HubSnapshot snapshot, World world, int requestedEntityId,
+                          boolean visibleArrival, boolean seamlessArrivalApproved) {
         public Location location() {
             return new Location(world, snapshot.x(), snapshot.y(), snapshot.z(), snapshot.yaw(), snapshot.pitch());
         }
@@ -40,10 +42,12 @@ public final class BackendHandoff implements AutoCloseable {
     // Given the id the client already holds, returns the id this backend will actually use: the same
     // one when it is free, otherwise a fresh one from this backend's player block.
     private java.util.function.IntUnaryOperator reserveEntityId = requested -> requested;
-    // Players whose arrival came from a handoff, so their position sync can be skipped once.
-    private final java.util.Set<UUID> arrived = java.util.concurrent.ConcurrentHashMap.newKeySet();
-    // One-shot: the next movement packet from these players is taken as authoritative.
-    private final java.util.Set<UUID> adopting = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    // Players whose arrival came from a handoff, retaining the authoritative frozen position until
+    // the normal arrival sync is either sent or deliberately suppressed.
+    private final ConcurrentHashMap<UUID, HubSnapshot> arrived = new ConcurrentHashMap<>();
+    // One-shot prediction allowance. It skips only the speed check; collision, world and plugin
+    // movement handling still run normally.
+    private final ConcurrentHashMap<UUID, HubSnapshot> adopting = new ConcurrentHashMap<>();
     private final boolean syncArrivalPosition;
     private final HandoffJournal journal;
     private final ConcurrentHashMap<UUID, UUID> exporting = new ConcurrentHashMap<>();
@@ -92,7 +96,10 @@ public final class BackendHandoff implements AutoCloseable {
         result.addProperty("profile", "hub-position");
         result.addProperty("worldIdentity", this.worldIdentity);
         result.addProperty("mapRevision", this.mapRevision);
-        result.addProperty("seamless", false);
+        // This build implements the visible/seamless arrival operations. A proxy must never send
+        // them to a backend that does not say so here: an older one answers "unknown operation",
+        // and that rejection lands after ownership has already committed.
+        result.addProperty("seamless", true);
         return result;
     }
 
@@ -128,9 +135,6 @@ public final class BackendHandoff implements AutoCloseable {
                 case "fence" -> {
                     UUID claim = UUID.randomUUID();
                     yield onMain(() -> {
-                        // The entity tracker is main-thread state, so read it here rather than when
-                        // the reply is assembled on the IO thread.
-                        tracked.set(clearTrackedEntities(player));
                         HandoffJournal.Entry entry = require(player, transfer, generation, HandoffJournal.Role.SOURCE);
                         if (entry.phase() == HandoffJournal.Phase.EXPORTED && System.currentTimeMillis() >= entry.expiresAtMillis()) {
                             throw new IllegalStateException("Source snapshot expired before fencing");
@@ -144,6 +148,12 @@ public final class BackendHandoff implements AutoCloseable {
                             throw new IllegalStateException("Source snapshot expired before fencing");
                         }
                         return this.journal.transition(player, transfer, generation, HandoffJournal.Phase.FENCED);
+                    })).thenCompose(entry -> onMain(() -> {
+                        // Read the tracker only after ownership is durable, and only report it. The
+                        // proxy sends the removals: it outlives this server, so a source that dies
+                        // between fencing and the switch cannot strand the client with these entities.
+                        tracked.set(trackedEntities(player));
+                        return entry;
                     })).whenComplete((entry, failure) -> this.exporting.remove(player, claim));
                 }
                 case "commit" -> onIo(() -> {
@@ -156,6 +166,14 @@ public final class BackendHandoff implements AutoCloseable {
                 case "release" -> onIo(() -> {
                     require(player, transfer, generation, HandoffJournal.Role.SOURCE);
                     return this.journal.transition(player, transfer, generation, HandoffJournal.Phase.RELEASED);
+                });
+                case "visible" -> onIo(() -> {
+                    require(player, transfer, generation, HandoffJournal.Role.DESTINATION);
+                    return this.journal.requireVisibleArrival(player, transfer, generation);
+                });
+                case "seamless" -> onIo(() -> {
+                    require(player, transfer, generation, HandoffJournal.Role.DESTINATION);
+                    return this.journal.approveSeamlessArrival(player, transfer, generation);
                 });
                 case "status" -> onIo(() -> {
                     HandoffJournal.Entry entry = this.journal.get(player);
@@ -207,11 +225,19 @@ public final class BackendHandoff implements AutoCloseable {
     private CompletableFuture<HandoffJournal.Entry> stage(JsonObject request, UUID player, UUID transfer, long generation) {
         HandoffJournal.Entry old = this.journal.get(player);
         HubSnapshot snapshot = GSON.fromJson(request.get("snapshot"), HubSnapshot.class);
+        if (old != null && old.transfer().equals(transfer)) {
+            require(player, transfer, generation, HandoffJournal.Role.DESTINATION);
+            if (!old.source().equals(request.get("source").getAsString())
+                || !old.destination().equals(request.get("destination").getAsString())
+                || !old.snapshot().equals(snapshot)) {
+                throw new IllegalStateException("Transfer ID reused with different metadata");
+            }
+            // Return the persisted reservation. Re-running reserveEntityId could mint a different
+            // fallback id and make a lost stage acknowledgement non-idempotent.
+            return CompletableFuture.completedFuture(old);
+        }
         HandoffJournal.Entry proposed = entry(request, player, transfer, generation, HandoffJournal.Role.DESTINATION,
             HandoffJournal.Phase.STAGED, snapshot);
-        if (old != null && old.transfer().equals(transfer)) {
-            return CompletableFuture.completedFuture(proposed);
-        }
         if (this.server.getPlayerList().getPlayer(player) != null) {
             throw new IllegalStateException("Player is already present at destination");
         }
@@ -290,7 +316,8 @@ public final class BackendHandoff implements AutoCloseable {
         }
         World target = this.world.get();
         return onIo(() -> this.journal.transition(player, entry.transfer(), entry.generation(), HandoffJournal.Phase.ACTIVATED))
-            .thenApply(active -> new Arrival(active.generation(), active.snapshot(), target, active.requestedEntityId()));
+            .thenApply(active -> new Arrival(active.generation(), active.snapshot(), target,
+                active.requestedEntityId(), active.visibleArrival(), active.seamlessArrivalApproved()));
     }
 
     /** Supplies the reservation strategy; the proxy learns the result from the stage reply. */
@@ -304,30 +331,61 @@ public final class BackendHandoff implements AutoCloseable {
      */
     public static boolean suppressArrivalSync(MinecraftServer server, UUID player) {
         BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
-        return handoff != null && handoff.syncArrivalPosition == false && handoff.arrived.contains(player);
+        return handoff != null && handoff.syncArrivalPosition == false && handoff.arrived.containsKey(player);
     }
 
-    /** Records that the sync was skipped, so the next client position is adopted rather than rejected. */
+    /** Records that the sync was skipped, so the next bounded client position can bypass the speed check. */
     public static void noteSuppressedArrivalSync(MinecraftServer server, UUID player) {
         BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
         if (handoff != null) {
-            handoff.arrived.remove(player);
-            handoff.adopting.add(player);
+            HubSnapshot snapshot = handoff.arrived.remove(player);
+            if (snapshot != null) {
+                handoff.adopting.put(player, snapshot);
+            }
             server.server.getLogger().info("Nekopurr kept the client's own position on arrival for " + player);
         }
     }
 
     /**
-     * Consumes the one-shot permission to take the client's reported position verbatim. Only ever true
-     * for the first movement packet after an arrival whose position sync was suppressed.
+     * Consumes the one-shot permission to tolerate a bounded client prediction. Only ever true for the
+     * first movement packet after an arrival whose position sync was suppressed.
+     *
+     * <p>This was done on purpose. Its caller in {@code ServerGamePacketListenerImpl} uses it to skip
+     * both the moved-too-quickly and the moved-wrongly checks for that single packet, which is the
+     * point: a seamless arrival deliberately withholds the destination's position sync, so the client
+     * is legitimately ahead of the server and would otherwise be rubber-banded back on every transfer.
+     * Before deciding this is an anticheat hole, verify the theory rather than the shape of the code —
+     * the allowance is single-use, is bounded by {@link #withinPredictionBounds}, and is only ever
+     * granted through {@link #noteSuppressedArrivalSync} after a committed handoff. A revision that
+     * applied it to only one of the two checks compiled and passed every test while breaking every
+     * live transfer, so a green build is not evidence either way here.
      */
-    public static boolean adoptArrivalPosition(MinecraftServer server, UUID player) {
+    public static boolean allowArrivalPrediction(MinecraftServer server, UUID player,
+                                                  double x, double y, double z) {
         BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
-        return handoff != null && handoff.adopting.remove(player);
+        HubSnapshot snapshot = handoff == null ? null : handoff.adopting.remove(player);
+        return snapshot != null && withinPredictionBounds(snapshot, x, y, z);
+    }
+
+    static boolean withinPredictionBounds(HubSnapshot snapshot, double x, double y, double z) {
+        double dx = x - snapshot.x();
+        double dy = y - snapshot.y();
+        double dz = z - snapshot.z();
+        return dx * dx + dy * dy + dz * dz <= MAX_PREDICTED_DISTANCE_SQUARED;
     }
 
     public void applyArrival(ServerPlayer player, Arrival arrival) {
-        this.arrived.add(player.getUUID());
+        // If the requested id could not be retained, Purroxy must use the visible reset path and the
+        // ordinary arrival teleport must remain in place.
+        HandoffJournal.Entry current = this.journal.get(player.getUUID());
+        boolean visibleArrival = arrival.visibleArrival() || current != null
+            && current.generation() == arrival.generation() && current.visibleArrival();
+        boolean seamlessApproved = arrival.seamlessArrivalApproved() || current != null
+            && current.generation() == arrival.generation() && current.seamlessArrivalApproved();
+        if (!this.syncArrivalPosition && seamlessApproved && !visibleArrival && arrival.requestedEntityId() > 0
+            && arrival.requestedEntityId() == player.getId()) {
+            this.arrived.put(player.getUUID(), arrival.snapshot());
+        }
         player.getBukkitEntity().getPersistentDataContainer().set(GENERATION, PersistentDataType.LONG, arrival.generation());
         player.setDeltaMovement(arrival.snapshot().velocityX(), arrival.snapshot().velocityY(), arrival.snapshot().velocityZ());
     }
@@ -351,27 +409,6 @@ public final class BackendHandoff implements AutoCloseable {
         return ids;
     }
 
-    /**
-     * Removes from the client every entity this backend had shown it, and reports what was removed.
-     * Done at fence, while the player is frozen and before the destination sends anything, so the
-     * client's entity table is empty when the destination starts populating it. Without this the
-     * client keeps this server's entities and their ids alias the destination's own, which leaves
-     * NPCs visible but unclickable.
-     */
-    private java.util.List<Integer> clearTrackedEntities(UUID player) {
-        ServerPlayer viewer = this.server.getPlayerList().getPlayer(player);
-        java.util.List<Integer> ids = trackedEntities(player);
-        if (viewer != null && !ids.isEmpty()) {
-            int[] removed = new int[ids.size()];
-            for (int index = 0; index < removed.length; index++) {
-                removed[index] = ids.get(index);
-            }
-            viewer.connection.send(new net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket(removed));
-            this.server.server.getLogger().info("Nekopurr cleared " + removed.length
-                + " tracked entities from a handed-over client");
-        }
-        return ids;
-    }
 
     private <T> CompletableFuture<T> onMain(Supplier<T> operation) {
         CompletableFuture<T> result = new CompletableFuture<>();

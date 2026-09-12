@@ -17,6 +17,8 @@ server:
   name: auto
   host: auto
   port: 0
+  # Manual floor for unpaired backends. Paired ones get a block from Purroxy instead.
+  entity-id-base: 1900000000
 resume:
   network-gamemode: Hub
   map: none
@@ -24,6 +26,9 @@ resume:
   region: US-West
 transfers:
   enabled: false
+  # Teleport a handed-over arrival to its snapshot position. Set false for seamless
+  # transfers, where the client kept moving while the source froze it.
+  sync-arrival-position: true
 ```
 
 Enable discovery with `authentication = "pairing"` in Purroxy. It generates its TLS
@@ -49,9 +54,10 @@ Both commands require the `purroxy.admin.pairing` permission.
 The proxy address must be reachable, not `0.0.0.0`. `server.name: auto` derives a
 numbered name from the group; `hub-*` requests that prefix explicitly. A fixed name
 also works. Assignment survives restart and does not shift when another server goes
-offline. Nekopur stores its permanent instance ID, certificate pin, assigned name
-and reconnect credential in `nekopurr-network/identity.json`; the enrollment secret is
-removed from that file after pairing and may also be cleared from the YAML.
+offline. Nekopur stores its permanent instance ID, certificate pin, assigned name,
+player entity-ID block and reconnect credential in `nekopurr-network/identity.json`; the
+enrollment secret is removed from that file after pairing and may also be cleared from
+the YAML.
 Keep this folder on persistent storage, but do not clone it into a new instance.
 Keep Purroxy's `purroxy-pairing` folder persistent too.
 
@@ -115,7 +121,18 @@ events and before destination chunks are prepared. This revision performs normal
 Minecraft arrival at that map's spawn. The opt-in [hub-position handoff](HANDOFF_PROTOCOL.md)
 adds journalled source coordinates, orientation and velocity, with a generation
 marker in the player's saved data. It requires a coordinating Purroxy implementation.
-The client loading screen is **not** suppressed by this backend capability.
+
+The backend now supplies what a screen-free switch needs, but never decides on one.
+It reserves a requested entity ID at staging, allocates player ids from a block Purroxy
+assigns so that reservation can usually be honoured, clears the entities it had shown a
+departing client at fence, and can skip the arrival teleport. **Purroxy decides** whether
+to suppress the client's reset, from the negotiated configuration, client-significant
+JoinGame state and the id actually reserved. Visible arrival is the safe default; after
+CONFIG matches, Purroxy persists `seamless` approval before acknowledging finish. A
+detached CONFIG fallback persists a `visible` marker. Suppressed arrivals
+allow only one bounded prediction packet and still run collision/plugin movement checks.
+A backend used with an ordinary Velocity proxy behaves exactly as before.
+
 The newer configuration calls this `transfers`. Keep it disabled for ordinary hub
 deployment. Opt-in coordinated position transfers require `transfers.map-id` and
 `transfers.map-revision` shared by matching replicas; the legacy `handoff` fields
@@ -128,7 +145,15 @@ remain aliases. `resume.map: none` still uses the normal default world, usually 
   it does not wait for player evacuation.
 - Proxy integration and live crash-injection verification of the new backend
   hub-position handoff, then native 26.2 same-map seamless transfer qualification.
-- Protocol/capability negotiation and later ViaVersion/ViaBackwards qualification.
+  The proxy side of seamless switching is implemented as of Purroxy `ab25cb90`; neither
+  side has been verified against a real client.
+- `BackendHandoff.isFrozen()` freezes a FENCED source unconditionally and nothing
+  resolves that fence if the coordinating proxy never returns, so a proxy crash between
+  fence and destination connection strands a player frozen. Do not fix this with an
+  expiry — see the stage 0 note in Purroxy's `docs/SEAMLESS_SCOPE.md`.
+- Protocol/capability negotiation and later ViaVersion/ViaBackwards qualification. Purroxy
+  now fails translated-client eligibility closed by checking ViaVersion's original protocol,
+  but that does not substitute for live compatibility testing.
 - Actual Pterodactyl deployment with two backends, plugin sleep vetoes, map loading,
   readiness probing, reconnects and the 70% wake/soft-overflow routing policy.
 

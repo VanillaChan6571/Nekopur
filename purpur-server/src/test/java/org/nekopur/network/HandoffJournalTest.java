@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @NullMarked
 class HandoffJournalTest {
@@ -42,6 +44,27 @@ class HandoffJournalTest {
             HandoffJournal.Role.DESTINATION, HandoffJournal.Phase.STAGED, this.snapshot, 999999);
         assertThrows(IllegalStateException.class, () -> restarted.begin(replacement));
         assertEquals(HandoffJournal.Phase.ACTIVATED, restarted.transition(this.player, this.transfer, 1, HandoffJournal.Phase.ACTIVATED).phase());
+    }
+
+    @Test
+    void visibleArrivalRequirementSurvivesRestart() throws Exception {
+        HandoffJournal journal = new HandoffJournal(this.directory);
+        journal.begin(entry(HandoffJournal.Role.DESTINATION, HandoffJournal.Phase.STAGED, 1));
+        journal.transition(this.player, this.transfer, 1, HandoffJournal.Phase.COMMITTED);
+        assertFalse(journal.get(this.player).visibleArrival());
+        journal.requireVisibleArrival(this.player, this.transfer, 1);
+        assertTrue(new HandoffJournal(this.directory).get(this.player).visibleArrival());
+    }
+
+    @Test
+    void seamlessArrivalApprovalSurvivesPreparationAndRestart() throws Exception {
+        HandoffJournal journal = new HandoffJournal(this.directory);
+        journal.begin(entry(HandoffJournal.Role.DESTINATION, HandoffJournal.Phase.STAGED, 1));
+        journal.transition(this.player, this.transfer, 1, HandoffJournal.Phase.COMMITTED);
+        assertFalse(journal.get(this.player).seamlessArrivalApproved());
+        journal.transition(this.player, this.transfer, 1, HandoffJournal.Phase.ACTIVATED);
+        journal.approveSeamlessArrival(this.player, this.transfer, 1);
+        assertTrue(new HandoffJournal(this.directory).get(this.player).seamlessArrivalApproved());
     }
 
     @Test

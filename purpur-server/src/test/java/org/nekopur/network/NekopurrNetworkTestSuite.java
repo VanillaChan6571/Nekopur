@@ -5,5 +5,6 @@ import org.junit.platform.suite.api.Suite;
 
 @Suite
 @org.jspecify.annotations.NullMarked
-@SelectClasses({NetworkConfigTest.class, PurroxyConnectionTest.class, BackendLifecycleTest.class, HandoffJournalTest.class, BackendPairingTest.class})
+@SelectClasses({NetworkConfigTest.class, PurroxyConnectionTest.class, BackendLifecycleTest.class,
+    HandoffJournalTest.class, BackendPairingTest.class, BackendHandoffPredictionTest.class})
 public class NekopurrNetworkTestSuite {}
