@@ -67,3 +67,6 @@ Codex_Claude_Reasoning.sh
 /plugin-stresstest
 applyAllPatches.log
 purpur-api/build.gradle.kts.patch.rej
+
+# Local SFTP deployment credentials - never commit
+deploy-sftp.local.cmd

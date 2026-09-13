@@ -48,6 +48,9 @@ public final class BackendHandoff implements AutoCloseable {
     // One-shot prediction allowance. It skips only the speed check; collision, world and plugin
     // movement handling still run normally.
     private final ConcurrentHashMap<UUID, HubSnapshot> adopting = new ConcurrentHashMap<>();
+    // Players who arrived without a client reset, whose effect list therefore still describes the
+    // source. Consumed once, after the player has been placed and can receive packets.
+    private final java.util.Set<UUID> reconcileEffects = ConcurrentHashMap.newKeySet();
     private final boolean syncArrivalPosition;
     private final HandoffJournal journal;
     private final ConcurrentHashMap<UUID, UUID> exporting = new ConcurrentHashMap<>();
@@ -106,6 +109,10 @@ public final class BackendHandoff implements AutoCloseable {
     CompletableFuture<JsonObject> handle(JsonObject message) {
         java.util.concurrent.atomic.AtomicReference<java.util.List<Integer>> tracked =
             new java.util.concurrent.atomic.AtomicReference<>(java.util.List.of());
+        java.util.concurrent.atomic.AtomicReference<java.util.List<String>> trackedObjectives =
+            new java.util.concurrent.atomic.AtomicReference<>(java.util.List.of());
+        java.util.concurrent.atomic.AtomicReference<java.util.List<String>> trackedTeams =
+            new java.util.concurrent.atomic.AtomicReference<>(java.util.List.of());
         if (!this.pending.tryAcquire()) {
             return CompletableFuture.failedFuture(new IllegalStateException("Too many pending handoff operations"));
         }
@@ -153,6 +160,10 @@ public final class BackendHandoff implements AutoCloseable {
                         // proxy sends the removals: it outlives this server, so a source that dies
                         // between fencing and the switch cannot strand the client with these entities.
                         tracked.set(trackedEntities(player));
+                        // Scoreboard names go the same way. A destination cannot blank these blind the
+                        // way it can effects: objective and team names are arbitrary, not a registry.
+                        trackedObjectives.set(scoreboardNames(player, true));
+                        trackedTeams.set(scoreboardNames(player, false));
                         return entry;
                     })).whenComplete((entry, failure) -> this.exporting.remove(player, claim));
                 }
@@ -196,6 +207,12 @@ public final class BackendHandoff implements AutoCloseable {
                 // The proxy removes these from the client itself, so a source that dies between here
                 // and the switch cannot leave the client holding entities nothing will ever clear.
                 reply.add("trackedEntities", GSON.toJsonTree(tracked.get()));
+            }
+            if (!trackedObjectives.get().isEmpty()) {
+                reply.add("trackedObjectives", GSON.toJsonTree(trackedObjectives.get()));
+            }
+            if (!trackedTeams.get().isEmpty()) {
+                reply.add("trackedTeams", GSON.toJsonTree(trackedTeams.get()));
             }
             return reply;
         }).whenComplete((result, failure) -> this.pending.release());
@@ -374,6 +391,30 @@ public final class BackendHandoff implements AutoCloseable {
         return dx * dx + dy * dy + dz * dz <= MAX_PREDICTED_DISTANCE_SQUARED;
     }
 
+    /**
+     * Clears the effects this server is not applying, for a client that kept its own world.
+     *
+     * <p>Nothing ever resynchronises a client's effect list: the server speaks only when its own set
+     * changes, so an effect the source applied and this server never had is never contradicted. Most
+     * look harmless because a second channel corrects them — speed rides an attribute, glowing rides
+     * an entity flag — but night vision, blindness, darkness and nausea are rendered straight from
+     * the client's list and would otherwise run their full duration here. A removal for an effect the
+     * client does not have is a no-op, so the registry is walked blind and this server never needs to
+     * learn what the source had applied.
+     */
+    public void afterArrival(ServerPlayer player) {
+        if (!this.reconcileEffects.remove(player.getUUID())) {
+            return; // A visible arrival already had its client state rebuilt by JoinGame.
+        }
+        for (net.minecraft.core.Holder.Reference<net.minecraft.world.effect.MobEffect> effect
+            : net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.listElements().toList()) {
+            if (!player.hasEffect(effect)) {
+                player.connection.send(new net.minecraft.network.protocol.game.ClientboundRemoveMobEffectPacket(
+                    player.getId(), effect));
+            }
+        }
+    }
+
     public void applyArrival(ServerPlayer player, Arrival arrival) {
         // If the requested id could not be retained, Purroxy must use the visible reset path and the
         // ordinary arrival teleport must remain in place.
@@ -385,6 +426,8 @@ public final class BackendHandoff implements AutoCloseable {
         if (!this.syncArrivalPosition && seamlessApproved && !visibleArrival && arrival.requestedEntityId() > 0
             && arrival.requestedEntityId() == player.getId()) {
             this.arrived.put(player.getUUID(), arrival.snapshot());
+            // The client kept its own world, so nothing rebuilt its effect list. See afterArrival.
+            this.reconcileEffects.add(player.getUUID());
         }
         player.getBukkitEntity().getPersistentDataContainer().set(GENERATION, PersistentDataType.LONG, arrival.generation());
         player.setDeltaMovement(arrival.snapshot().velocityX(), arrival.snapshot().velocityY(), arrival.snapshot().velocityZ());
@@ -395,6 +438,26 @@ public final class BackendHandoff implements AutoCloseable {
      * Taken from the tracker rather than inferred, so it is exact; other players are included, since
      * their entities are in the client's table too and would otherwise remain as frozen copies.
      */
+    /** Objective or team names on the board this client is actually shown, read on the server thread. */
+    private java.util.List<String> scoreboardNames(UUID player, boolean objectives) {
+        ServerPlayer viewer = this.server.getPlayerList().getPlayer(player);
+        if (viewer == null) {
+            return java.util.List.of();
+        }
+        org.bukkit.scoreboard.Scoreboard board = viewer.getBukkitEntity().getScoreboard();
+        java.util.List<String> names = new java.util.ArrayList<>();
+        if (objectives) {
+            for (org.bukkit.scoreboard.Objective objective : board.getObjectives()) {
+                names.add(objective.getName());
+            }
+        } else {
+            for (org.bukkit.scoreboard.Team team : board.getTeams()) {
+                names.add(team.getName());
+            }
+        }
+        return names;
+    }
+
     private java.util.List<Integer> trackedEntities(UUID player) {
         ServerPlayer viewer = this.server.getPlayerList().getPlayer(player);
         if (viewer == null) {
