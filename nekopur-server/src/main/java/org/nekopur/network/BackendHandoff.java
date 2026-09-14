@@ -52,6 +52,7 @@ public final class BackendHandoff implements AutoCloseable {
     // source. Consumed once, after the player has been placed and can receive packets.
     private final java.util.Set<UUID> reconcileEffects = ConcurrentHashMap.newKeySet();
     private final boolean syncArrivalPosition;
+    private final long loginGraceNanos;
     private final HandoffJournal journal;
     private final ConcurrentHashMap<UUID, UUID> exporting = new ConcurrentHashMap<>();
     private final Semaphore pending = new Semaphore(64);
@@ -73,8 +74,14 @@ public final class BackendHandoff implements AutoCloseable {
         // Kept true by default: correcting the client's position on arrival is the ordinary, safe
         // behaviour. Set false to let a seamless arrival keep the position the client predicted.
         boolean syncArrivalPosition = yaml.getBoolean("transfers.sync-arrival-position", true);
+        // Accepts the spelling as first written alongside the corrected one, so notes and
+        // configs that already use it keep working.
+        boolean suppressLoginChecks = yaml.getBoolean("transfers.login-seamless-check-suppression",
+            yaml.getBoolean("transfers.LoginSeamlessCheckSupression", true));
+        int loginGraceSeconds = yaml.getInt("transfers.login-seamless-check-seconds", 10);
         return new BackendHandoff(server, config.serverId(), yaml.getString("transfers.map-id", yaml.getString("handoff.world-identity", "")),
-            yaml.getString("transfers.map-revision", yaml.getString("handoff.map-revision", "")), world, syncArrivalPosition);
+            yaml.getString("transfers.map-revision", yaml.getString("handoff.map-revision", "")), world, syncArrivalPosition,
+            suppressLoginChecks ? Math.max(0, loginGraceSeconds) : 0);
     }
 
     void assignedName(String name) {
@@ -82,9 +89,11 @@ public final class BackendHandoff implements AutoCloseable {
     }
 
     private BackendHandoff(MinecraftServer server, String serverId, String worldIdentity,
-                           String mapRevision, Supplier<World> world, boolean syncArrivalPosition) throws Exception {
+                           String mapRevision, Supplier<World> world, boolean syncArrivalPosition,
+                           int loginGraceSeconds) throws Exception {
         new HubSnapshot(worldIdentity, mapRevision, 0, 0, 0, 0, 0, 0, 0, 0);
         this.syncArrivalPosition = syncArrivalPosition;
+        this.loginGraceNanos = java.util.concurrent.TimeUnit.SECONDS.toNanos(loginGraceSeconds);
         this.server = server;
         this.serverId = serverId;
         this.worldIdentity = worldIdentity;
@@ -340,6 +349,23 @@ public final class BackendHandoff implements AutoCloseable {
     /** Supplies the reservation strategy; the proxy learns the result from the stage reply. */
     public void onReserveEntityId(java.util.function.IntUnaryOperator reservation) {
         this.reserveEntityId = reservation;
+    }
+
+    /**
+     * Whether a connection that began at {@code startedNanos} is still inside the configured
+     * post-login movement grace.
+     *
+     * <p>This suppresses vanilla's moved-too-quickly correction for every player who joins, not
+     * only those arriving through a handoff, because a client can still be catching up for longer
+     * than the single packet the arrival allowance covers. It is deliberately a toggle: it is a
+     * real hole in one anticheat check, harmless on a hub where flight and speed are handed out by
+     * plugins anyway, and not something to run on a server where movement matters. Zero, the
+     * configured default when suppression is switched off, disables it entirely.
+     */
+    public static boolean withinLoginMovementGrace(MinecraftServer server, long startedNanos) {
+        BackendHandoff handoff = server.nekopurrNetwork == null ? null : server.nekopurrNetwork.handoff;
+        return handoff != null && handoff.loginGraceNanos > 0
+            && System.nanoTime() - startedNanos < handoff.loginGraceNanos;
     }
 
     /**

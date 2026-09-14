@@ -259,7 +259,7 @@
                                      this.player.checkMovementStatistics(this.player.getX() - startX, this.player.getY() - startY, this.player.getZ() - startZ);
                                      this.lastGoodX = this.player.getX();
                                      this.lastGoodY = this.player.getY();
-@@ -1760,7 +_,23 @@
+@@ -1760,7 +_,27 @@
          }
      }
  
@@ -276,7 +276,11 @@
 +
      private boolean shouldCheckPlayerMovement(final boolean isFallFlying) {
 +        // Nekopur start - suppress moved-too-quickly corrections during the join grace period
-+        if (System.nanoTime() - this.nekopurMovementGraceStarted < java.util.concurrent.TimeUnit.SECONDS.toNanos(10)) {
++        // Configurable, and off unless transfers are enabled: this is a real hole in one anticheat
++        // check, wanted on a hub where plugins hand out flight and speed anyway, and unwanted
++        // anywhere movement matters. See BackendHandoff.withinLoginMovementGrace.
++        if (org.nekopur.network.BackendHandoff.withinLoginMovementGrace(this.server,
++            this.nekopurMovementGraceStarted)) {
 +            return false;
 +        }
 +        // Nekopur end - join movement grace
