@@ -138,6 +138,50 @@ deployment. Opt-in coordinated position transfers require `transfers.map-id` and
 `transfers.map-revision` shared by matching replicas; the legacy `handoff` fields
 remain aliases. `resume.map: none` still uses the normal default world, usually `world`.
 
+## Plugin fixes
+
+Corrections for observed bugs in third-party plugins, switched on by default and inert when the
+plugin in question is absent. Each is a named key under `plugin-fixes` in `Nekopurr.yaml`.
+
+```yaml
+plugin-fixes:
+  citizens-npc-resync: true
+```
+
+### `citizens-npc-resync`
+
+**What it corrects.** Citizens shows a player-type NPC by adding its profile to the client's player
+list, then withdrawing that entry again on a short delayed task, while the entity itself is sent
+separately by the chunk tracker. A client resolves a player entity's profile from its player list at
+the moment the spawn arrives, so when the spawn lands after the withdrawal there is nothing to
+resolve it against and the NPC is silently dropped.
+
+Measured on this network at protocol 766: the withdrawal follows its own addition by 40-60 ms, while
+a spawn that wins the race follows by 2-4 ms. Which NPCs lose varies per join. It happens on ordinary
+logins as well as on seamless arrivals - a plain login was observed missing one of five - but a
+visible join hides it, because the `JoinGame` that follows rebuilds the client's entity table. A
+seamless arrival keeps that table, so there the loss lasts until the player reconnects.
+
+**What this does.** Sixty ticks after any player joins, one bounded pass re-tracks every Citizens NPC
+in that player's world: it asks Citizens to re-send the player-list entry, then drops and re-adds the
+tracker pairing so the spawn follows the profile. It is scoped to that join - a later arrival, a
+changed connection or a change of world cancels it - and it is capped at 128 NPCs.
+
+**What this is not.** It does not change when Citizens withdraws a profile, so the original
+misordering still happens on the join itself; this only gives the client a second, correctly ordered
+chance afterwards. The upstream setting that governs the race is Citizens' own
+`tablist-remove-packet-delay`.
+
+**When it does nothing.** Citizens absent, Citizens present but with a skin or scheduler API this
+build does not recognise, or the key set to `false`. Each says so once at startup and is never
+retried; none of them can fail a join. It also requires the Nekopurr network layer to be enabled,
+since that is what owns it.
+
+**What it logs.** One line naming the state on first use, then per join: the schedule (with delay,
+arrival id and world), any reason it was skipped, and `N candidate(s), M re-paired server-side`.
+That last count is server-side tracking only - whether the client rendered them is visible only in
+Purroxy's packet trace.
+
 ## Remaining work and verification
 
 - Coordinated drain before stopping, including timeout and evacuation policy.
