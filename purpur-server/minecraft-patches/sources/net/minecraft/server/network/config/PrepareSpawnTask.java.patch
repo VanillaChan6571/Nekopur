@@ -85,7 +85,7 @@
  
              try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
                  Optional<ValueInput> input = PrepareSpawnTask.this.server
-@@ -309,6 +_,11 @@
+@@ -309,7 +_,17 @@
                  }
                  // Paper end - Entity#getEntitySpawnReason
                  player.snapTo(this.spawnPosition, this.spawnAngle.x, this.spawnAngle.y);
@@ -95,5 +95,11 @@
 +                }
 +                // Nekopur end - apply committed profile
                  PrepareSpawnTask.this.server.getPlayerList().placeNewPlayer(connection, player, cookie);
++                // Nekopur start - reconcile client state a seamless arrival did not rebuild
++                if (PrepareSpawnTask.this.handoffArrival != null) {
++                    PrepareSpawnTask.this.server.nekopurrNetwork.handoff.afterArrival(player);
++                }
++                // Nekopur end - reconcile client state
                  input.ifPresent(tag -> {
                      player.loadAndSpawnEnderPearls(tag);
+                     player.loadAndSpawnParentVehicle(tag);
