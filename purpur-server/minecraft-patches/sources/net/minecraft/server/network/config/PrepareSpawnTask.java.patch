@@ -85,7 +85,7 @@
  
              try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
                  Optional<ValueInput> input = PrepareSpawnTask.this.server
-@@ -309,7 +_,17 @@
+@@ -309,7 +_,22 @@
                  }
                  // Paper end - Entity#getEntitySpawnReason
                  player.snapTo(this.spawnPosition, this.spawnAngle.x, this.spawnAngle.y);
@@ -100,6 +100,11 @@
 +                    PrepareSpawnTask.this.server.nekopurrNetwork.handoff.afterArrival(player);
 +                }
 +                // Nekopur end - reconcile client state
++                // Nekopur start - plugin fix: Citizens drops NPCs whose profile is withdrawn before their spawn
++                if (PrepareSpawnTask.this.server.nekopurrNetwork != null) {
++                    PrepareSpawnTask.this.server.nekopurrNetwork.citizensResync.refresh(player);
++                }
++                // Nekopur end - plugin fix
                  input.ifPresent(tag -> {
                      player.loadAndSpawnEnderPearls(tag);
                      player.loadAndSpawnParentVehicle(tag);

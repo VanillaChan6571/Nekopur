@@ -23,6 +23,16 @@ public final class NekopurrNetwork implements AutoCloseable {
     private final PurroxyConnection connection;
     private final BackendLifecycle lifecycle;
     public final @Nullable BackendHandoff handoff;
+    /**
+     * A correction for a Citizens bug, not part of any transfer.
+     *
+     * <p>Citizens adds an NPC's player-list entry and withdraws it again on a short delayed task
+     * while the entity itself is sent by the chunk tracker. A spawn that lands after the withdrawal
+     * reaches a client with no profile to resolve it against, and the NPC is dropped. That happens
+     * on ordinary logins as well as on seamless arrivals, so this is applied to every join. It is
+     * inert without Citizens and cannot fail a join either way.
+     */
+    public final CitizensArrivalRefresh citizensResync;
     private boolean prepared;
     private @Nullable World destination;
     private @Nullable CompletableFuture<Void> preparation;
@@ -34,6 +44,8 @@ public final class NekopurrNetwork implements AutoCloseable {
     private NekopurrNetwork(MinecraftServer server, NetworkConfig config) throws Exception {
         this.server = server;
         this.config = config;
+        this.citizensResync = new CitizensArrivalRefresh(server.server.getLogger(),
+            pluginFixEnabled("citizens-npc-resync"));
         this.lifecycle = new BackendLifecycle(config.startSleeping(), config.authentication().equals("pairing"));
         this.connection = new PurroxyConnection(config, server.getPort(), server.getPlayerList().getMaxPlayers(),
             () -> this.lifecycle.heartbeat(System.nanoTime()), request -> this.lifecycle.wake(), server.server.getLogger());
@@ -54,6 +66,22 @@ public final class NekopurrNetwork implements AutoCloseable {
                 // late is safe and the persisted value applies from the next startup onwards.
                 applyEntityIdBase(this.connection.entityIdBase());
             });
+        }
+    }
+
+    /**
+     * Whether a named plugin fix is switched on. Defaults to true: these correct observed bugs in
+     * third-party plugins and are inert when the plugin is absent, so the useful default is on and
+     * the switch exists to turn one off if it ever misbehaves.
+     */
+    private static boolean pluginFixEnabled(String name) {
+        try {
+            org.bukkit.configuration.file.YamlConfiguration yaml =
+                new org.bukkit.configuration.file.YamlConfiguration();
+            yaml.load(java.nio.file.Path.of("Nekopurr.yaml").toFile());
+            return yaml.getBoolean("plugin-fixes." + name, true);
+        } catch (Exception unreadable) {
+            return true; // No config, or one that cannot be parsed here: keep the default.
         }
     }
 
