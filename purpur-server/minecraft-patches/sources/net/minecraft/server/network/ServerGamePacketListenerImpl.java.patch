@@ -295,6 +295,22 @@
                      org.bukkit.event.player.PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.RIGHT_CLICK_AIR, itemStack, hand);
                      cancelled = event.useItemInHand() == Event.Result.DENY;
                  } else {
+@@ -2763,6 +_,15 @@
+             return;
+         }
+         // CraftBukkit end
++        // Nekopur start - deliver chat unsigned so recipients accumulate no acknowledgement history
++        // Only the delivered packet changes; the sender's signed PlayerChatMessage is untouched and
++        // every incoming check still runs. A recipient with no history has nothing a destination
++        // cannot resolve after a transfer that suppresses JoinGame.
++        if (org.nekopur.network.NekopurrNetwork.disguiseOutgoingChat(this.server)) {
++            this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
++            return;
++        }
++        // Nekopur end - deliver chat unsigned
+         // Paper start - Ensure that client receives chat packets in the same order that we add into the message signature cache
+         synchronized (this.messageSignatureCache) {
+         this.send(
 @@ -2844,6 +_,7 @@
                  ItemStack mainHandItem = this.player.getMainHandItem();
                  if (this.player.isWithinAttackRange(mainHandItem, targetBounds, io.papermc.paper.configuration.GlobalConfiguration.get().misc.clientInteractionLeniencyDistance.or(3.0))) { // Paper - configurable lenience

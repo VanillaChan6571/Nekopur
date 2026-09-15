@@ -14,7 +14,8 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
                             String advertisedHost, int advertisedPort, String group, String map,
                             int safeLimit, String region, boolean startSleeping, Path keyStore,
                             String passwordEnvironment, Path proxyCa, String authentication,
-                            String pairingToken, Path identityFile, Path challengeFile, int entityIdBase) {
+                            String pairingToken, Path identityFile, Path challengeFile, int entityIdBase,
+                            boolean disguiseOutgoingChat, boolean debugScoreboard) {
     /** Shared enrollment secret Purroxy publishes; administrators upload it into the server directory. */
     public static final String CHALLENGE_FILE = "purroxy.challenge";
     /**
@@ -31,7 +32,7 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
         this(enabled, proxyHost, proxyPort, serverId, advertisedHost, advertisedPort, group, map,
             safeLimit, region, startSleeping, keyStore, passwordEnvironment, proxyCa, "certificates", "",
             keyStore.toAbsolutePath().getParent().resolve("nekopurr-network/identity.json"),
-            keyStore.toAbsolutePath().getParent().resolve(CHALLENGE_FILE), DEFAULT_ENTITY_ID_BASE);
+            keyStore.toAbsolutePath().getParent().resolve(CHALLENGE_FILE), DEFAULT_ENTITY_ID_BASE, false, false);
     }
     /** Keeps callers that predate the entity id base on the default. */
     public NetworkConfig(boolean enabled, String proxyHost, int proxyPort, String serverId,
@@ -41,7 +42,7 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
                          String pairingToken, Path identityFile, Path challengeFile) {
         this(enabled, proxyHost, proxyPort, serverId, advertisedHost, advertisedPort, group, map,
             safeLimit, region, startSleeping, keyStore, passwordEnvironment, proxyCa, authentication,
-            pairingToken, identityFile, challengeFile, DEFAULT_ENTITY_ID_BASE);
+            pairingToken, identityFile, challengeFile, DEFAULT_ENTITY_ID_BASE, false, false);
     }
 
     public static NetworkConfig load(Path path) throws IOException, InvalidConfigurationException {
@@ -109,7 +110,9 @@ public record NetworkConfig(boolean enabled, String proxyHost, int proxyPort, St
             yaml.getString("tls.password-environment", "NEKOPURR_KEYSTORE_PASSWORD"),
             directory.resolve(yaml.getString("tls.proxy-ca", "purroxy-ca.crt")), authentication,
             challenge(yaml, challengeFile), directory.resolve("nekopurr-network/identity.json"), challengeFile,
-            entityIdBase(yaml));
+            entityIdBase(yaml),
+            yaml.getBoolean("chat.disguise-outgoing", false),
+            yaml.getBoolean("debug.scoreboard", false));
     }
 
     /**

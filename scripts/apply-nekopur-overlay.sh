@@ -1,13 +1,16 @@
 #!/usr/bin/env sh
 set -eu
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# This script invoked :purpur-server:applyNekopurOverlay, which is not registered in this build.
+# No build script references nekopur-overlay/ either, so the overlay it describes is not applied
+# by anything. Failing loudly beats failing with Gradle's "task not found" and sending the reader
+# looking for a typo.
 
-if [ -x "$ROOT_DIR/gradlew" ]; then
-  GRADLE="$ROOT_DIR/gradlew"
-else
-  echo "gradlew not found in $ROOT_DIR" >&2
-  exit 1
-fi
+cat >&2 <<'MSG'
+apply-nekopur-overlay.sh does nothing: :purpur-server:applyNekopurOverlay is not a registered task,
+and no build script wires nekopur-overlay/ into the build.
 
-exec "$GRADLE" :purpur-server:applyNekopurOverlay "$@"
+Run `./gradlew nekopurWhere` for where each kind of Nekopur change actually belongs, and
+`./gradlew nekopurBuild` to build the server jar.
+MSG
+exit 1

@@ -85,9 +85,40 @@ public final class NekopurrNetwork implements AutoCloseable {
         }
     }
 
+    /**
+     * Whether player chat is delivered to recipients without its signature.
+     *
+     * <p>A recipient's last-seen acknowledgement history only advances for a signed message:
+     * the server tracks one via addPending solely when a signature is present, and the client
+     * advances its own tracker only in markMessageAsProcessed, which requires the same. Deliver
+     * chat without signatures and neither side accumulates history, so a client that is moved to
+     * another backend without a JoinGame carries no acknowledgement window the destination
+     * cannot resolve.
+     *
+     * <p>This changes only what recipients are sent. The sender's own PlayerChatMessage keeps its
+     * signature, so plugin events still see a signed message, and no validation is disabled:
+     * incoming signatures and acknowledgements are checked exactly as before. Off by default;
+     * it costs reportability and signature-addressed deletion, so it is opt-in per backend and
+     * has to be set consistently across hubs that transfer between one another.
+     *
+     * @param server the server a message is being delivered on
+     * @return true when this backend is configured to deliver chat unsigned
+     */
+    public static boolean disguiseOutgoingChat(MinecraftServer server) {
+        return server.nekopurrNetwork != null && server.nekopurrNetwork.config.disguiseOutgoingChat();
+    }
+
     public static @Nullable NekopurrNetwork start(MinecraftServer server) {
         try {
             NetworkConfig config = NetworkConfig.load(Path.of("Nekopurr.yaml"));
+            // Before the enabled check: the objective is a test fixture for the proxy's teardown,
+            // and it is just as useful on a backend that is not currently enrolled. Removing it
+            // when the flag is off matters because the main scoreboard persists with the world.
+            if (config.debugScoreboard()) {
+                DebugScoreboard.install(server.server.getLogger());
+            } else {
+                DebugScoreboard.remove(server.server.getLogger());
+            }
             if (!config.enabled()) {
                 return null;
             }
