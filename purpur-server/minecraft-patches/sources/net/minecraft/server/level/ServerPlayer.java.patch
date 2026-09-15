@@ -1,6 +1,6 @@
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
-@@ -441,6 +_,9 @@
+@@ -440,6 +_,9 @@
      public boolean isRealPlayer; // Paper
      public com.destroystokyo.paper.event.entity.@Nullable PlayerNaturallySpawnCreaturesEvent playerNaturallySpawnedEvent; // Paper - PlayerNaturallySpawnCreaturesEvent
      public org.bukkit.event.player.PlayerQuitEvent.@Nullable QuitReason quitReason = null; // Paper - Add API for quit reason; there are a lot of changes to do if we change all methods leading to the event
@@ -8,9 +8,9 @@
 +    private boolean compassBar = false; // Purpur - Add compass command
 +    private boolean ramBar = false; // Purpur - Implement rambar commands
  
-     // Paper start - rewrite chunk system
-     private ca.spottedleaf.moonrise.patches.chunk_system.player.RegionizedPlayerChunkLoader.PlayerChunkLoaderData chunkLoader;
-@@ -515,6 +_,9 @@
+     public ServerPlayer(final MinecraftServer server, final ServerLevel level, final GameProfile gameProfile, final ClientInformation clientInformation) {
+         super(level, gameProfile);
+@@ -484,6 +_,9 @@
          this.respawnConfig = input.read("respawn", ServerPlayer.RespawnConfig.CODEC).orElse(null);
          this.spawnExtraParticlesOnFall = input.getBooleanOr("spawn_extra_particles_on_fall", false);
          this.raidOmenPosition = input.read("raid_omen_position", BlockPos.CODEC).orElse(null);
@@ -18,9 +18,9 @@
 +        this.compassBar = input.getBooleanOr("Purpur.CompassBar", false); // Purpur - Add compass command
 +        this.ramBar = input.getBooleanOr("Purpur.RamBar", false); // Purpur - Implement rambar command
          this.loadGameTypes(input); // Paper - Expand PlayerGameModeChangeEvent
+         input.read("post_effects", Codec.list(Identifier.CODEC)).ifPresent(this.postEffects::addAll);
          this.setShoulderEntityLeft(input.read("ShoulderEntityLeft", CompoundTag.CODEC).orElseGet(CompoundTag::new));
-         this.setShoulderEntityRight(input.read("ShoulderEntityRight", CompoundTag.CODEC).orElseGet(CompoundTag::new));
-@@ -558,6 +_,9 @@
+@@ -529,6 +_,9 @@
              output.store("ShoulderEntityRight", CompoundTag.CODEC, this.getShoulderEntityRight());
          }
          this.getBukkitEntity().setExtraData(output); // CraftBukkit
@@ -30,18 +30,7 @@
      }
  
      private void saveParentVehicle(final ValueOutput playerOutput) {
-@@ -717,6 +_,10 @@
- 
-     @Override
-     public void tick() {
-+        // Nekopur start - freeze source simulation during coordinated hub handoff
-+        if (this.level().getServer().nekopurrNetwork != null && this.level().getServer().nekopurrNetwork.handoff != null
-+            && this.level().getServer().nekopurrNetwork.handoff.isFrozen(this.getUUID())) return;
-+        // Nekopur end - freeze source simulation
-         // CraftBukkit start
-         if (this.joining) {
-             this.joining = false;
-@@ -1185,6 +_,7 @@
+@@ -1160,6 +_,7 @@
              // Paper - moved up to sendClientboundPlayerCombatKillPacket()
              this.sendClientboundPlayerCombatKillPacket(event.getShowDeathMessages(), deathScreenMessage); // Paper - Expand PlayerDeathEvent
              Team team = this.getTeam();
@@ -49,7 +38,7 @@
              if (team == null || team.getDeathMessageVisibility() == Team.Visibility.ALWAYS) {
                  this.server.getPlayerList().broadcastSystemMessage(deathMessage, false);
              } else if (team.getDeathMessageVisibility() == Team.Visibility.HIDE_FOR_OTHER_TEAMS) {
-@@ -1294,6 +_,13 @@
+@@ -1269,6 +_,13 @@
              return false;
          }
  
@@ -63,16 +52,7 @@
          Entity entity = source.getEntity();
          if (!( // Paper - split the if statement. If below statement is false, hurtServer would not have been evaluated. Return false.
              !(entity instanceof Player player && !this.canHarmPlayer(player))
-@@ -1535,7 +_,7 @@
-         }
- 
-         if (newLevel.dimension() == lastDimension) {
--            this.connection.internalTeleport(PositionMoveRotation.of(transition), transition.relatives()); // CraftBukkit  
-+            this.connection.internalTeleport(PositionMoveRotation.of(transition), transition.relatives()); // CraftBukkit
-             this.connection.resetPosition();
-             transition.postTeleportTransition().onTransition(this);
-             return this;
-@@ -1558,6 +_,7 @@
+@@ -1548,6 +_,7 @@
  
          profiler.pop();
          profiler.push("placing");
@@ -80,7 +60,7 @@
          this.setServerLevel(newLevel);
          this.connection.internalTeleport(PositionMoveRotation.of(transition), transition.relatives()); // CraftBukkit - use internal teleport without event
          this.connection.resetPosition();
-@@ -1671,7 +_,7 @@
+@@ -1657,7 +_,7 @@
                          new AABB(bedCenter.x() - 8.0, bedCenter.y() - 5.0, bedCenter.z() - 8.0, bedCenter.x() + 8.0, bedCenter.y() + 5.0, bedCenter.z() + 8.0),
                          monster -> monster.isPreventingPlayerRest(this.level(), this)
                      );
@@ -89,8 +69,8 @@
                      return Either.left(Player.BedSleepingProblem.NOT_SAFE);
                  }
              }
-@@ -1707,7 +_,17 @@
-                 CriteriaTriggers.SLEPT_IN_BED.trigger(this);
+@@ -1698,7 +_,17 @@
+                 }
              });
              if (!this.level().canSleepThroughNights()) {
 -                this.sendOverlayMessage(Component.translatable("sleep.not_possible"));
@@ -108,15 +88,15 @@
              }
  
              this.level().updateSleepingPlayerList();
-@@ -1802,6 +_,7 @@
+@@ -1801,6 +_,7 @@
  
      @Override
-     public void openTextEdit(final SignBlockEntity sign, final boolean isFrontText) {
-+        if (level().purpurConfig.signAllowColors) this.connection.send(sign.getTranslatedUpdatePacket(textFilteringEnabled, isFrontText)); // Purpur - Signs allow color codes
+     public void openTextEdit(final SignBlockEntity sign, final SignTextSlot slot) {
++        if (level().purpurConfig.signAllowColors) this.connection.send(sign.getTranslatedUpdatePacket(textFilteringEnabled, slot)); // Purpur - Signs allow color codes
          this.connection.send(new ClientboundBlockUpdatePacket(this.level(), sign.getBlockPos()));
-         this.connection.send(new ClientboundOpenSignEditorPacket(sign.getBlockPos(), isFrontText));
+         this.connection.send(new ClientboundOpenSignEditorPacket(sign.getBlockPos(), slot));
      }
-@@ -2146,6 +_,26 @@
+@@ -2143,6 +_,26 @@
          this.lastSentExp = -1; // CraftBukkit - Added to reset
      }
  
@@ -143,8 +123,8 @@
      @Override
      public void completeUsingItem() {
          if (!this.useItem.isEmpty() && this.isUsingItem()) {
-@@ -2383,6 +_,20 @@
-         );
+@@ -2370,6 +_,20 @@
+         return new CommandSourceStack(this.commandSource(), this.position(), this.getRotationVector(), this.level(), this.permissions(), this.server, this);
      }
  
 +    // Purpur start - Component related conveniences
@@ -164,7 +144,7 @@
      @Override
      public void sendSystemMessage(final Component message) {
          this.sendSystemMessage(message, false);
-@@ -2534,7 +_,67 @@
+@@ -2521,7 +_,67 @@
  
      public void resetLastActionTime() {
          this.lastActionTime = Util.getMillis();
@@ -233,7 +213,7 @@
  
      public ServerStatsCounter getStats() {
          return this.stats;
-@@ -3159,4 +_,65 @@
+@@ -3149,4 +_,64 @@
          return (org.bukkit.craftbukkit.entity.CraftPlayer) super.getBukkitEntity();
      }
      // CraftBukkit end
@@ -262,9 +242,8 @@
 +                to.getYaw(),
 +                to.getPitch(),
 +                net.minecraft.world.entity.Relative.ALL,
-+                TeleportTransition.DO_NOTHING,
-+                org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.UNKNOWN
-+            ));
++                TeleportTransition.DO_NOTHING
++            ).withCause(org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.UNKNOWN));
 +        }
 +    }
 +    // Purpur end - Add option to teleport to spawn if outside world border

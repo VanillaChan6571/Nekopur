@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: VanillaChanny <39040261+VanillaChan6571@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 15:39:24 -0700
+Subject: [PATCH] Adapt Purpur runtime APIs to Minecraft 26.3
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 13b05892cc4a09c2c4b4279ec7020f114c2512de..f4bd91b4c97318d744d76cf329238012adeca0f7 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -1492,14 +1492,14 @@ public final class CraftServer implements Server {
+     public void addFuel(org.bukkit.Material material, int burnTime) {
+         Preconditions.checkArgument(burnTime > 0, "BurnTime must be greater than 0");
+ 
+-        net.minecraft.world.item.ItemStack itemStack = net.minecraft.world.item.ItemStack.fromBukkitCopy(new ItemStack(material));
+-        MinecraftServer.getServer().fuelValues().values.put(itemStack.getItem(), burnTime);
++        net.minecraft.world.item.ItemStack itemStack = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(new ItemStack(material)) /* Nekopur - 26.3 item bridge */;
++        org.nekopur.compat.FuelOverrides.set(itemStack.getItem(), burnTime); // Nekopur - 26.3 removed the global fuel table
+     }
+ 
+     @Override
+     public void removeFuel(org.bukkit.Material material) {
+-        net.minecraft.world.item.ItemStack itemStack = net.minecraft.world.item.ItemStack.fromBukkitCopy(new ItemStack(material));
+-        MinecraftServer.getServer().fuelValues().values.keySet().removeIf(itemStack::is);
++        net.minecraft.world.item.ItemStack itemStack = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(new ItemStack(material)) /* Nekopur - 26.3 item bridge */;
++        org.nekopur.compat.FuelOverrides.set(itemStack.getItem(), 0); // Nekopur - disable even component-defined fuels
+     }
+     // Purpur end - Added the ability to add combustible items
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java
+index 94a271eddff445db654db08129c3e92413a662f4..beb7deabf252c436ac08f1a460d2a008ed7a218f 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java
+@@ -247,7 +247,7 @@ public class CraftVillager extends CraftAbstractVillager implements Villager {
+     // Purpur start - Lobotomize stuck villagers
+     @Override
+     public boolean isLobotomized() {
+-        return getHandle().isLobotomized();
++        return false; // Nekopur - upstream 26.3 leaves villager lobotomization unapplied
+     }
+     // Purpur end - Lobotomize stuck villagers
+ }
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java
+index 45f1191f76810aa406f349c7162f6e85c63042ba..e891c10658d8193c49bc5b45f9b3b2551e162167 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java
+@@ -44,7 +44,7 @@ public class CraftInventoryFurnace extends CraftInventory implements FurnaceInve
+ 
+     @Override
+     public boolean isFuel(ItemStack stack) {
+-        return stack != null && !stack.isEmpty() && CraftItemStack.asNMSCopy(stack).has(DataComponents.COOKING_FUEL);
++        return stack != null && !stack.isEmpty() && org.nekopur.compat.FuelOverrides.isFuel(CraftItemStack.asNMSCopy(stack)) /* Nekopur - runtime fuel overrides */;
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java
+index 4971fce895035c71e35e062c77ce92dd2b455bd6..e08c500215fc8bcee138ba0ccc9da3ac0adf2a56 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java
+@@ -171,11 +171,13 @@ public class CraftItemType<M extends ItemMeta> extends HolderableBase<Item> impl
+ 
+     @Override
+     public boolean isFuel() {
+-        return this.getHandle().components().has(DataComponents.COOKING_FUEL);
++        return org.nekopur.compat.FuelOverrides.isFuel(new net.minecraft.world.item.ItemStack(this.getHandle())); // Nekopur - runtime fuel overrides
+     }
+ 
+     @Override
+     public int getBurnDuration() {
++        Integer override = org.nekopur.compat.FuelOverrides.burnTime(new net.minecraft.world.item.ItemStack(this.getHandle())); // Nekopur - runtime fuel overrides
++        if (override != null) return override; // Nekopur - avoid loot context lookup for an explicit override
+         if (!this.isFuel()) {
+             return 0;
+         }

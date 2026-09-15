@@ -8,7 +8,7 @@ farm Nether Wart. Reimplemented based on a feature of the carpet-extra
 mod.
 
 diff --git a/net/minecraft/world/entity/ai/behavior/HarvestFarmland.java b/net/minecraft/world/entity/ai/behavior/HarvestFarmland.java
-index 5a0d0d1c145c303930769ea27f81d91337a3f1bf..29458d4dc1764b5b7ede94853190a5dd84c1fc36 100644
+index 5a2d006b682fd9b53d0a490828eb79b4d085db94..29c5eb7f960a95edf0e11eeba64abe4e3e7d0335 100644
 --- a/net/minecraft/world/entity/ai/behavior/HarvestFarmland.java
 +++ b/net/minecraft/world/entity/ai/behavior/HarvestFarmland.java
 @@ -31,6 +31,7 @@ public class HarvestFarmland extends Behavior<Villager> {
@@ -73,11 +73,11 @@ index 5a0d0d1c145c303930769ea27f81d91337a3f1bf..29458d4dc1764b5b7ede94853190a5dd
                                  1.0F,
                                  1.0F
 diff --git a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
-index 736ad21b73a19113c6f0f3bce6aa1cc0a41485a8..ec3541d4f2d39a3fd482063efabeab6478311214 100644
+index ec104015086a37c3fdf549aaf36ef40733b14802..a0ed878a500c444c44658e06b90333a706dcddfd 100644
 --- a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
 +++ b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
-@@ -59,6 +59,12 @@ public class TradeWithVillager extends Behavior<Villager> {
-                 throwHalfStack(body, ImmutableSet.of(Items.WHEAT), target);
+@@ -61,6 +61,12 @@ public class TradeWithVillager extends Behavior<Villager> {
+                 throwHalfStack(body, itemStack -> itemStack.is(Items.WHEAT), target);
              }
  
 +            // Purpur start - Option for Villager Clerics to farm Nether Wart
@@ -87,10 +87,10 @@ index 736ad21b73a19113c6f0f3bce6aa1cc0a41485a8..ec3541d4f2d39a3fd482063efabeab64
 +            // Purpur end - Option for Villager Clerics to farm Nether Wart
 +
              if (!this.trades.isEmpty() && body.getInventory().hasAnyOf(this.trades)) {
-                 throwHalfStack(body, this.trades, target);
+                 throwHalfStack(body, itemStack -> this.trades.contains(itemStack.getItem()), target);
              }
 diff --git a/net/minecraft/world/entity/ai/behavior/VillagerGoalPackages.java b/net/minecraft/world/entity/ai/behavior/VillagerGoalPackages.java
-index fa9163d1f73eacd110227b6cf95f578c678aa803..bcae1ac0f5acccd4e58fe1cc2a54b3d30b488414 100644
+index 35b564506edc94d4d6dabe239082d992e22efec4..188af725791ed1a08bfdc851c6e655771658f27a 100644
 --- a/net/minecraft/world/entity/ai/behavior/VillagerGoalPackages.java
 +++ b/net/minecraft/world/entity/ai/behavior/VillagerGoalPackages.java
 @@ -74,8 +74,13 @@ public class VillagerGoalPackages {
@@ -109,7 +109,7 @@ index fa9163d1f73eacd110227b6cf95f578c678aa803..bcae1ac0f5acccd4e58fe1cc2a54b3d3
          } else {
              workAtPoi = new WorkAtPoi();
 diff --git a/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java b/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java
-index ec12508c112b1e7748a5d197b73a0d540bed10fc..f2daabad51d565cae11e8bfce8b1bf40a7e56a78 100644
+index 7d3e843c2d3c5e15b7bea7302d6118419d3a4957..1da9f1cdb2ee8b1514c79fee24460f852b6a3577 100644
 --- a/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java
 +++ b/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java
 @@ -22,6 +22,13 @@ public class SecondaryPoiSensor extends Sensor<Villager> {
@@ -126,7 +126,7 @@ index ec12508c112b1e7748a5d197b73a0d540bed10fc..f2daabad51d565cae11e8bfce8b1bf40
          ResourceKey<Level> dimensionType = level.dimension();
          BlockPos center = body.blockPosition();
          List<GlobalPos> jobSites = Lists.newArrayList();
-@@ -38,7 +45,7 @@ public class SecondaryPoiSensor extends Sensor<Villager> {
+@@ -39,7 +46,7 @@ public class SecondaryPoiSensor extends Sensor<Villager> {
              }
          }
  
@@ -136,10 +136,10 @@ index ec12508c112b1e7748a5d197b73a0d540bed10fc..f2daabad51d565cae11e8bfce8b1bf40
              brain.setMemory(MemoryModuleType.SECONDARY_JOB_SITE, jobSites);
          } else {
 diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
-index f0ebe6f376a13df2fa34f41ecdcc9bded72dc756..bd9f39efb01f9153db56e6e58b56b76dec3d8cc3 100644
+index d6daace9e1617c641fe376b3796e2025b6aa71f4..ed8ebcdb6e568f9e1609dd86eb329969a204e068 100644
 --- a/net/minecraft/world/entity/npc/villager/Villager.java
 +++ b/net/minecraft/world/entity/npc/villager/Villager.java
-@@ -148,7 +148,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -145,7 +145,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
                  activities.add(
                      ActivityData.create(
                          Activity.WORK,
@@ -148,7 +148,7 @@ index f0ebe6f376a13df2fa34f41ecdcc9bded72dc756..bd9f39efb01f9153db56e6e58b56b76d
                          ImmutableSet.of(Pair.of(MemoryModuleType.JOB_SITE, MemoryStatus.VALUE_PRESENT))
                      )
                  );
-@@ -947,7 +947,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -851,7 +851,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
      }
  
      public boolean hasFarmSeeds() {

@@ -109,15 +109,11 @@ Use the command `./gradlew build` to build the API and server. Compiled JARs
 will be placed under `purpur-api/build/libs` and `purpur-server/build/libs`.
 **These JARs are not used to start a server.**
 
-To compile a server-ready purpurclip jar, run `./gradlew createMojmapBundlerJar`.
+To compile a server-ready purpurclip jar, run `./gradlew createPaperclipJar`.
 To install the `purpur-api` and `purpur` dependencies to your local Maven repo, run `./gradlew publishToMavenLocal`. The compiled purpurclip jar will be in `purpur-server/build/libs`.
 
 Special Thanks To:
 -------------
-
-<table>
-<tr>
-<td>
 
 ### YourKit
 
@@ -127,20 +123,6 @@ Special Thanks To:
 support open source projects of all kinds with their full-featured [Java](https://www.yourkit.com/java/profiler)
 and [.NET](https://www.yourkit.com/.net/profiler) application profilers. We thank them for allowing us to use their
 software so we can make Purpur the best it can be.
-
-</td>
-
-<td>
-
-### JetBrains
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" alt="JetBrains Logo" height="75">](https://www.jetbrains.com)
-
-[JetBrains](https://www.jetbrains.com/), creators of the IntelliJ IDEA, supports Purpur with one of their [Open Source Licenses](https://www.jetbrains.com/opensource/). IntelliJ IDEA is the recommended IDE for working with Purpur, and most of the Purpur team uses it.
-
-</td>
-</tr>
-</table>
 
 ### Our Contributors
 

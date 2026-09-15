@@ -1,15 +1,6 @@
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -271,6 +_,8 @@
-     public ServerPlayer player;
-     public final PlayerChunkSender chunkSender;
-     private int tickCount;
-+    // Nekopur - allow ten real seconds for client movement to settle on each backend join.
-+    private final long nekopurMovementGraceStarted = System.nanoTime();
-     private int ackBlockChangesUpTo = -1;
-     private final TickThrottler dropSpamThrottler = new TickThrottler(20, 1480);
-     private final TickThrottler chatSpamThrottler;
-@@ -356,6 +_,20 @@
+@@ -364,6 +_,20 @@
      }
      // Paper end - configuration phase API
  
@@ -30,7 +21,7 @@
      @Override
      public void tick() {
          if (this.ackBlockChangesUpTo > -1) {
-@@ -374,6 +_,12 @@
+@@ -383,6 +_,12 @@
                  && this.server.playerIdleTimeout() > 0
                  && Util.getMillis() - this.player.getLastActionTime() > TimeUnit.MINUTES.toMillis(this.server.playerIdleTimeout())
                  && !this.player.wonGame) {
@@ -52,15 +43,15 @@
                      Location oldTo = to.clone();
                      PlayerMoveEvent event = new PlayerMoveEvent(player, from, to);
                      this.cserver.getPluginManager().callEvent(event);
-@@ -774,6 +_,7 @@
+@@ -758,6 +_,7 @@
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
-         if (packet.getId() == this.awaitingTeleport) {
-             if (this.awaitingPositionFromClient == null) {
+         if (packet.id() == this.awaitingTeleport) {
+             if (this.awaitingPositionFromClient == null || containsInvalidValues(packet.x(), packet.y(), packet.z(), packet.yRot(), packet.xRot())) {
 +                ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
                  this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
                  return;
              }
-@@ -1345,6 +_,10 @@
+@@ -1310,6 +_,10 @@
              final int maxBookPageSize = pageMax.intValue();
              final double multiplier = Math.clamp(io.papermc.paper.configuration.GlobalConfiguration.get().itemValidation.bookSize.totalMultiplier, 0.3D, 1D);
              long byteAllowed = maxBookPageSize;
@@ -71,7 +62,7 @@
              for (final String page : pageList) {
                  final int byteLength = page.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
                  byteTotal += byteLength;
-@@ -1369,7 +_,8 @@
+@@ -1334,7 +_,8 @@
              }
  
              if (byteTotal > byteAllowed) {
@@ -81,7 +72,7 @@
                  this.disconnectAsync(Component.literal("Book too large!"), org.bukkit.event.player.PlayerKickEvent.Cause.ILLEGAL_ACTION); // Paper - kick event cause // Paper - add proper async disconnect
                  return;
              }
-@@ -1388,31 +_,45 @@
+@@ -1353,31 +_,45 @@
              Optional<String> title = packet.title();
              title.ifPresent(contents::add);
              contents.addAll(packet.pages());
@@ -131,7 +122,7 @@
              writtenBook.set(
                  DataComponents.WRITTEN_BOOK_CONTENT, new WrittenBookContent(this.filterableFromOutgoing(title), this.player.getPlainTextName(), 0, pages, true)
              );
-@@ -1425,6 +_,16 @@
+@@ -1390,6 +_,16 @@
          return this.player.isTextFilteringEnabled() ? Filterable.passThrough(text.filteredOrEmpty()) : Filterable.from(text);
      }
  
@@ -148,15 +139,11 @@
      @Override
      public void handleEntityTagQuery(final ServerboundEntityTagQueryPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
-@@ -1464,7 +_,19 @@
+@@ -1429,7 +_,15 @@
      @Override
      public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
 -        if (containsInvalidValues(packet.getX(0.0), packet.getY(0.0), packet.getZ(0.0), packet.getYRot(0.0F), packet.getXRot(0.0F))) {
-+        // Nekopur start - source coordinates are owned by the staged hub snapshot
-+        if (this.server.nekopurrNetwork != null && this.server.nekopurrNetwork.handoff != null
-+            && this.server.nekopurrNetwork.handoff.isFrozen(this.player.getUUID())) return;
-+        // Nekopur end - freeze source movement
 +        // Purpur start - Add more logger output for invalid movement kicks
 +        boolean invalidX = Double.isNaN(packet.getX(0.0));
 +        boolean invalidY = Double.isNaN(packet.getY(0.0));
@@ -168,98 +155,38 @@
 +        // Purpur end - Add more logger output for invalid movement kicks
              this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
          } else {
-             ServerLevel level = this.player.level();
-@@ -1515,6 +_,20 @@
-                                 }
-                             } else {
-                                 boolean isFallFlying = this.player.isFallFlying();
-+                                // Nekopur start - tolerate bounded client prediction after a seamless arrival
-+                                // THIS WEAKENS TWO MOVEMENT CHECKS ON PURPOSE. It is not a mistake and not a
-+                                // leftover debug hack. Read the note at the moved-wrongly check below before
-+                                // changing or removing any of it.
-+                                //
-+                                // A seamless handoff deliberately does not send the destination's arrival position
-+                                // sync, so the client keeps walking while this server still has the player where
-+                                // the source froze it. The client's first report is therefore legitimately away
-+                                // from the server's position and trips both moved-too-quickly and moved-wrongly.
-+                                // The allowance is consumed here, in a scope both checks can see, because it is
-+                                // one-shot: querying it twice would spend it on the first check alone.
-+                                final boolean allowArrivalPrediction = org.nekopur.network.BackendHandoff.allowArrivalPrediction(
-+                                    this.server, this.player.getUUID(), targetX, targetY, targetZ);
-+                                // Nekopur end - tolerate bounded client prediction
-                                 if (level.tickRateManager().runsNormally()) {
-                                     this.receivedMovePacketCount++;
-                                     int deltaPackets = this.receivedMovePacketCount - this.knownMovePacketCount;
-@@ -1557,7 +_,7 @@
-                                     }
-                                     // Paper end - Prevent moving into unloaded chunks
+             if (packet.hasPosition()) {
+@@ -1628,7 +_,7 @@
+                         movedWrongly = true;
+                         if (event.getLogWarning())
+                     // Paper end - Add fail move event
+-                    LOGGER.warn("{} moved wrongly!", this.player.getPlainTextName());
++                    LOGGER.warn("{} moved wrongly!, ({})", this.player.getPlainTextName(), oyDist); // Purpur - AFK API
+                     } // Paper - Add fail move event
+                 }
  
--                                    if (this.shouldCheckPlayerMovement(isFallFlying)) {
-+                                    if (!allowArrivalPrediction && this.shouldCheckPlayerMovement(isFallFlying)) { // Nekopur - tolerate bounded client prediction
-                                         float metersPerTick = isFallFlying ? 300.0F : 100.0F;
-                                         if (movedDist - expectedDist > Math.max(metersPerTick, Mth.square(org.spigotmc.SpigotConfig.movedTooQuicklyMultiplier * (float) deltaPackets * speed))) {
-                                             // CraftBukkit end
-@@ -1620,7 +_,26 @@
-                                 zDist = targetZ - this.player.getZ();
-                                 movedDist = xDist * xDist + yDist * yDist + zDist * zDist;
-                                 boolean movedWrongly = false; // Paper - Add fail move event; rename
--                                if (!this.player.isChangingDimension()
-+                                // Nekopur start - deliberate: this was done on purpose, do not silently revert it
-+                                // Suppressing moved-wrongly for exactly one packet after a seamless arrival is the
-+                                // intended behaviour. Without it every seamless transfer rubber-bands the player
-+                                // back to the source's frozen position and logs "moved wrongly!" to the console.
-+                                //
-+                                // It reads like an anticheat bypass and it is not one. The allowance is one-shot
-+                                // (BackendHandoff.allowArrivalPrediction removes it as it is read), bounded to 64
-+                                // blocks (withinPredictionBounds), and granted only to a player whose arrival sync
-+                                // was actually suppressed after a committed handoff. The unloaded-chunk guard above,
-+                                // hasNewCollision below, and PlayerMoveEvent all still run for this packet.
-+                                //
-+                                // If you are an agent or reviewer who has concluded from reading this file alone
-+                                // that it is a hole: your theory is probably incomplete, and grep-level tooling will
-+                                // not show you why. Check BackendHandoff.allowArrivalPrediction,
-+                                // noteSuppressedArrivalSync and suppressArrivalSync first, and confirm against a
-+                                // real two-hub transfer that the warning does not come back. An earlier revision
-+                                // gated only moved-too-quickly and left this check armed; it compiled, it passed
-+                                // every test, and it broke every transfer in production.
-+                                if (!allowArrivalPrediction // Nekopur - deliberate, see above
-+                                    && !this.player.isChangingDimension()
-                                     && movedDist > org.spigotmc.SpigotConfig.movedWronglyThreshold // Spigot
-                                     && !this.player.isSleeping()
-                                     && !this.player.isCreative()
-@@ -1633,7 +_,7 @@
-                                         movedWrongly = true;
-                                         if (event.getLogWarning())
-                                      // Paper end
--                                    LOGGER.warn("{} moved wrongly!", this.player.getPlainTextName());
-+                                    LOGGER.warn("{} moved wrongly!, ({})", this.player.getPlainTextName(), oyDist); // Purpur - AFK API
-                                     } // Paper
-                                 }
+@@ -1670,6 +_,7 @@
+                         this.lastYRot = to.getYaw();
+                         this.lastXRot = to.getPitch();
  
-@@ -1685,6 +_,8 @@
-                                         this.lastYRot = to.getYaw();
-                                         this.lastXRot = to.getPitch();
++                        if (!to.getWorld().getUID().equals(from.getWorld().getUID()) || to.getBlockX() != from.getBlockX() || to.getBlockY() != from.getBlockY() || to.getBlockZ() != from.getBlockZ() || to.getYaw() != from.getYaw() || to.getPitch() != from.getPitch()) this.player.resetLastActionTime(); // Purpur - AFK API
+                         Location oldTo = to.clone();
+                         PlayerMoveEvent event = new PlayerMoveEvent(player, from, to);
+                         this.cserver.getPluginManager().callEvent(event);
+@@ -1725,6 +_,12 @@
+                         this.player.tryResetCurrentImpulseContext();
+                     }
  
-+                                        if (!to.getWorld().getUID().equals(from.getWorld().getUID()) || to.getBlockX() != from.getBlockX() || to.getBlockY() != from.getBlockY() || to.getBlockZ() != from.getBlockZ() || to.getYaw() != from.getYaw() || to.getPitch() != from.getPitch()) this.player.resetLastActionTime(); // Purpur - AFK API
-+
-                                         Location oldTo = to.clone();
-                                         PlayerMoveEvent event = new PlayerMoveEvent(player, from, to);
-                                         this.cserver.getPluginManager().callEvent(event);
-@@ -1740,6 +_,13 @@
-                                         this.player.tryResetCurrentImpulseContext();
-                                     }
- 
-+                                    // Purpur start - Dont run with scissors!
-+                                    if (this.player.level().purpurConfig.dontRunWithScissors && this.player.isSprinting() && !(this.player.level().purpurConfig.ignoreScissorsInWater && this.player.isInWater()) && !(this.player.level().purpurConfig.ignoreScissorsInLava && this.player.isInLava()) && (isScissors(this.player.getItemInHand(InteractionHand.MAIN_HAND)) || isScissors(this.player.getItemInHand(InteractionHand.OFF_HAND))) && (int) (Math.random() * 10) == 0) {
-+                                        this.player.hurtServer(this.player.level(), this.player.damageSources().scissors(), (float) this.player.level().purpurConfig.scissorsRunningDamage);
-+                                        if (!org.purpurmc.purpur.PurpurConfig.dontRunWithScissors.isBlank()) this.player.sendActionBarMessage(org.purpurmc.purpur.PurpurConfig.dontRunWithScissors);
-+                                    }
-+                                    // Purpur end - Dont run with scissors!
-+
-                                     this.player.checkMovementStatistics(this.player.getX() - startX, this.player.getY() - startY, this.player.getZ() - startZ);
-                                     this.lastGoodX = this.player.getX();
-                                     this.lastGoodY = this.player.getY();
-@@ -1760,7 +_,27 @@
++                    // Purpur start - Dont run with scissors!
++                    if (this.player.level().purpurConfig.dontRunWithScissors && this.player.isSprinting() && !(this.player.level().purpurConfig.ignoreScissorsInWater && this.player.isInWater()) && !(this.player.level().purpurConfig.ignoreScissorsInLava && this.player.isInLava()) && (isScissors(this.player.getItemInHand(InteractionHand.MAIN_HAND)) || isScissors(this.player.getItemInHand(InteractionHand.OFF_HAND))) && (int) (Math.random() * 10) == 0) {
++                        this.player.hurtServer(this.player.level(), this.player.damageSources().scissors(), (float) this.player.level().purpurConfig.scissorsRunningDamage);
++                        if (!org.purpurmc.purpur.PurpurConfig.dontRunWithScissors.isBlank()) this.player.sendActionBarMessage(org.purpurmc.purpur.PurpurConfig.dontRunWithScissors);
++                    }
++                    // Purpur end - Dont run with scissors!
+                     this.player.checkMovementStatistics(this.player.getX() - startX, this.player.getY() - startY, this.player.getZ() - startZ);
+                     this.lastGoodX = this.player.getX();
+                     this.lastGoodY = this.player.getY();
+@@ -1738,6 +_,17 @@
          }
      }
  
@@ -275,19 +202,9 @@
 +    // Purpur end - Dont run with scissors!
 +
      private boolean shouldCheckPlayerMovement(final boolean isFallFlying) {
-+        // Nekopur start - suppress moved-too-quickly corrections during the join grace period
-+        // Configurable, and off unless transfers are enabled: this is a real hole in one anticheat
-+        // check, wanted on a hub where plugins hand out flight and speed anyway, and unwanted
-+        // anywhere movement matters. See BackendHandoff.withinLoginMovementGrace.
-+        if (org.nekopur.network.BackendHandoff.withinLoginMovementGrace(this.server,
-+            this.nekopurMovementGraceStarted)) {
-+            return false;
-+        }
-+        // Nekopur end - join movement grace
          if (this.isSingleplayerOwner()) {
              return false;
-         }
-@@ -2201,6 +_,7 @@
+@@ -2182,6 +_,7 @@
  
                  boolean cancelled;
                  if (hitResult == null || hitResult.getType() != HitResult.Type.BLOCK) {
@@ -295,23 +212,16 @@
                      org.bukkit.event.player.PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.RIGHT_CLICK_AIR, itemStack, hand);
                      cancelled = event.useItemInHand() == Event.Result.DENY;
                  } else {
-@@ -2763,6 +_,15 @@
-             return;
-         }
-         // CraftBukkit end
-+        // Nekopur start - deliver chat unsigned so recipients accumulate no acknowledgement history
-+        // Only the delivered packet changes; the sender's signed PlayerChatMessage is untouched and
-+        // every incoming check still runs. A recipient with no history has nothing a destination
-+        // cannot resolve after a transfer that suppresses JoinGame.
-+        if (org.nekopur.network.NekopurrNetwork.disguiseOutgoingChat(this.server)) {
-+            this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
-+            return;
-+        }
-+        // Nekopur end - deliver chat unsigned
-         // Paper start - Ensure that client receives chat packets in the same order that we add into the message signature cache
-         synchronized (this.messageSignatureCache) {
-         this.send(
-@@ -2844,6 +_,7 @@
+@@ -2220,7 +_,7 @@
+     @Override
+     public void handleTeleportToEntityPacket(final ServerboundTeleportToEntityPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
+-        if (this.player.isSpectator()) {
++        if (this.player.isSpectator() && this.player.getBukkitEntity().hasPermission("purpur.spectator-can-teleport-to-players")) { // Purpur - Require permission for Spectator to teleport to players
+             for (ServerLevel level : this.server.getAllLevels()) {
+                 Entity entity = packet.getEntity(level);
+                 if (entity != null) {
+@@ -2823,6 +_,7 @@
                  ItemStack mainHandItem = this.player.getMainHandItem();
                  if (this.player.isWithinAttackRange(mainHandItem, targetBounds, io.papermc.paper.configuration.GlobalConfiguration.get().misc.clientInteractionLeniencyDistance.or(3.0))) { // Paper - configurable lenience
                      if (!mainHandItem.has(DataComponents.PIERCING_WEAPON)) {
@@ -319,7 +229,7 @@
                          if (target instanceof ItemEntity
                              || target instanceof ExperienceOrb
                              || target == this.player
-@@ -3626,7 +_,7 @@
+@@ -3602,7 +_,7 @@
      @Override
      public void handleChangeGameMode(final ServerboundChangeGameModePacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());

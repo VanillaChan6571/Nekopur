@@ -13,7 +13,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
+import org.jspecify.annotations.Nullable;
 
 public class SpawnerItem extends BlockItem {
 
@@ -21,10 +21,9 @@ public class SpawnerItem extends BlockItem {
         super(block, settings);
     }
 
-    @Override
-    protected boolean updateCustomBlockEntityTag(BlockPos pos, Level level, Player player, ItemStack stack, BlockState state) {
-        boolean handled = super.updateCustomBlockEntityTag(pos, level, player, stack, state);
-        if (level.purpurConfig.silkTouchEnabled && player.getBukkitEntity().hasPermission("purpur.place.spawners")) {
+    // 26.3 applies block entity components from a static BlockItem method.
+    public void applySpawnerData(BlockPos pos, Level level, @Nullable Player player, ItemStack stack) {
+        if (player != null && level.purpurConfig.silkTouchEnabled && player.getBukkitEntity().hasPermission("purpur.place.spawners")) {
             BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof SpawnerBlockEntity spawner) {
                 CompoundTag customData = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
@@ -38,6 +37,5 @@ public class SpawnerItem extends BlockItem {
                 }
             }
         }
-        return handled;
     }
 }

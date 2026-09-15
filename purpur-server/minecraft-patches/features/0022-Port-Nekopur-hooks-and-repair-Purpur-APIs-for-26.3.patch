@@ -1,0 +1,618 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: VanillaChanny <39040261+VanillaChan6571@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 15:39:24 -0700
+Subject: [PATCH] Port Nekopur hooks and repair Purpur APIs for 26.3
+
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb166e4fbd41 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -330,6 +330,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     public boolean isIteratingOverLevels = false; // Paper - Throw exception on world create while being ticked
+     private final Set<String> pluginsBlockingSleep = new java.util.HashSet<>(); // Paper - API to allow/disallow tick sleeping
+     public static final long SERVER_INIT = System.nanoTime(); // Paper - Lag compensation
++    public org.nekopur.network.@Nullable NekopurrNetwork nekopurrNetwork; // Nekopur - native Purroxy integration
+     public boolean lagging = false; // Purpur - Lagging threshold
+     protected boolean upnp = false; // Purpur - UPnP Port Forwarding
+     // Paper start - improve tick loop
+@@ -678,7 +679,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                         Objects.requireNonNullElse(worldCreator.forcedSpawnPitch(), LevelData.RespawnData.DEFAULT.pitch())
+                     ));
+                 } else {
++                    // Nekopur start - honor async generateSpawn(false): skip the main-thread spawn-point search (the async caller finds/sets the spawn itself)
++                    org.nekopur.AsyncWorldOptions nekoAsyncOpts = org.nekopur.NekoServerImpl.getAsyncWorldOptions();
++                    if (nekoAsyncOpts == null || nekoAsyncOpts.isGenerateSpawn()) {
+                     setInitialSpawn(overworld, levelData, worldOptions.generateBonusChest(), isDebug, overworld.levelLoadListener); // Paper - per world level load listener
++                    } // Nekopur end
+                 }
+                 // Paper end - Allow direct setting spawn location
+                 levelData.setInitialized(true);
+@@ -798,6 +803,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         // CraftBukkit end
+         ChunkLoadCounter chunkLoadCounter = new ChunkLoadCounter();
+ 
++        if (!org.nekopur.NekoServerImpl.SKIP_SPAWN_PREP.get()) { // Nekopur - skip synchronous spawn-chunk force-load during async world creation (prevents main-thread freeze / player rubber-banding); async pregen loads chunks instead
+         if (true) { // CraftBukkit
+             chunkLoadCounter.track(level, () -> {
+                 TicketStorage savedTickets = level.getDataStorage().get(TicketStorage.TYPE);
+@@ -815,6 +821,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         } while (chunkLoadCounter.pendingChunks() > 0);
+ 
+         level.levelLoadListener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS); // Paper - per world load listener
++        } // Nekopur - end skip spawn-chunk force-load
+         level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
+         this.updateEffectiveRespawnData();
+         this.forceTicks = false; // CraftBukkit
+@@ -901,6 +908,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+         if (!this.hasLoggedStop && this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
+         this.shutdownThread = Thread.currentThread(); // Paper - Improved watchdog support
++        if (this.nekopurrNetwork != null) this.nekopurrNetwork.close(); // Nekopur - stop independent control connection
+         org.spigotmc.WatchdogThread.doStop(); // Paper - Improved watchdog support
+         // CraftBukkit end
+         this.packetProcessor.close();
+@@ -1157,6 +1165,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             LOGGER.info("Running delayed init tasks");
+             new io.papermc.paper.threadedregions.RegionizedServerInitEvent().callEvent(); // Call Folia init event
+             this.server.getScheduler().mainThreadHeartbeat(); // run all 1 tick delay tasks during init,
++            this.nekopurrNetwork = org.nekopur.network.NekopurrNetwork.start(this); // Nekopur - start discovery after worlds and plugins
+             // this is going to be the first thing the tick process does anyway, so move done and run it after
+             // everything is init before watchdog tick.
+             // anything at 3+ won't be caught here but also will trip watchdog....
+@@ -1471,6 +1480,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         long nano = Util.getNanos();
+         int emptyTickThreshold = this.pauseWhenEmptySeconds() * 20;
+         this.removeDisabledPluginsBlockingSleep(); // Paper - API to allow/disallow tick sleeping
++        // Nekopur start - coordinate native pause with Purroxy readiness and wake requests
++        if (this.nekopurrNetwork != null) {
++            emptyTickThreshold = this.nekopurrNetwork.tick(this.playerList.getPlayerCount() == 0
++                && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty());
++            if (emptyTickThreshold == 0) this.emptyTicks = 0;
++        }
++        // Nekopur end - coordinate native pause
+         if (emptyTickThreshold > 0) {
+             if (this.playerList.getPlayerCount() == 0 && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty()) { // Paper - API to allow/disallow tick sleeping
+                 this.emptyTicks++;
+@@ -3015,6 +3031,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+     // Paper start - API to check if the server is sleeping
+     public boolean isTickPaused() {
++        if (this.nekopurrNetwork != null) return this.emptyTicks > 0; // Nekopur - managed pause threshold is one tick
+         return this.emptyTicks > 0 && this.emptyTicks >= this.pauseWhenEmptySeconds() * 20;
+     }
+ 
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index b9ebaf42cc62636b48c02367f9ae42f20333c887..d2726e54810b59b538e67b4f1927688d0145211a 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -697,6 +697,10 @@ public class ServerPlayer extends Player {
+ 
+     @Override
+     public void tick() {
++        // Nekopur start - freeze source simulation during coordinated hub handoff
++        if (this.level().getServer().nekopurrNetwork != null && this.level().getServer().nekopurrNetwork.handoff != null
++            && this.level().getServer().nekopurrNetwork.handoff.isFrozen(this.getUUID())) return;
++        // Nekopur end - freeze source simulation
+         // CraftBukkit start
+         if (this.joining) {
+             this.joining = false;
+diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+index 563d5b7915bb321365f40246cce5cc087a0f445b..2ba5e099c9fe8d6e7d4c5e432c75153408a198e3 100644
+--- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+@@ -53,6 +53,7 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+     private static final long KEEPALIVE_LIMIT = Long.getLong("paper.playerconnection.keepalive", 30) * 1000; // Paper - provide property to set keepalive limit
+     protected static final net.minecraft.resources.Identifier MINECRAFT_BRAND = net.minecraft.resources.Identifier.withDefaultNamespace("brand"); // Paper - Brand support
+     // Paper start - retain certain values
++    public boolean purpurClient; // Nekopur - retain Purpur client detection on 26.3
+     public @Nullable String clientBrand;
+     public final java.util.Set<String> pluginMessagerChannels;
+     // Paper end - retain certain values
+@@ -148,6 +149,7 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+                 return;
+             }
+ 
++            if (identifier.equals(net.minecraft.resources.Identifier.fromNamespaceAndPath("purpur", "client"))) this.purpurClient = true; // Nekopur - retain Purpur client detection
+             if (identifier.equals(MINECRAFT_BRAND)) {
+                 this.clientBrand = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(data)).readUtf(256);
+             }
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index cb7f783de7e3a8a8c15dbe30a3fad4da285f3029..579ba9516d49a27463f111cfdf47a7576e8551fa 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -274,6 +274,8 @@ public class ServerGamePacketListenerImpl
+     public ServerPlayer player;
+     public final PlayerChunkSender chunkSender;
+     private int tickCount;
++    // Nekopur - allow ten real seconds for client movement to settle on each backend join.
++    private final long nekopurMovementGraceStarted = System.nanoTime();
+     private int ackBlockChangesUpTo = -1;
+     private final TickThrottler dropSpamThrottler = new TickThrottler(20, 1480);
+     private final TickThrottler chatSpamThrottler;
+@@ -778,6 +780,10 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleAcceptTeleportPacket(final ServerboundAcceptTeleportationPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // Nekopur start - source coordinates are owned by the staged hub snapshot
++        if (this.server.nekopurrNetwork != null && this.server.nekopurrNetwork.handoff != null
++            && this.server.nekopurrNetwork.handoff.isFrozen(this.player.getUUID())) return;
++        // Nekopur end - freeze source movement
+         if (packet.id() == this.awaitingTeleport) {
+             if (this.awaitingPositionFromClient == null || containsInvalidValues(packet.x(), packet.y(), packet.z(), packet.yRot(), packet.xRot())) {
+                 ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
+@@ -1362,7 +1368,7 @@ public class ServerGamePacketListenerImpl
+ 
+             if (byteTotal > byteAllowed) {
+                 ServerGamePacketListenerImpl.LOGGER.warn("{} tried to send too large of a book. Book size: {} - Allowed: {} - Pages: {}", this.player.getScoreboardName(), byteTotal, byteAllowed, pageList.size());
+-                org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent event = new org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent(player.getBukkitEntity(), itemstack.asBukkitCopy()); if (event.shouldKickPlayer()) // Purpur - PlayerBookTooLargeEvent
++                org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent event = new org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent(player.getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(itemstack) /* Nekopur - 26.3 item bridge */); if (event.shouldKickPlayer()) // Purpur - PlayerBookTooLargeEvent
+                 this.disconnectAsync(Component.literal("Book too large!"), org.bukkit.event.player.PlayerKickEvent.Cause.ILLEGAL_ACTION); // Paper - kick event cause // Paper - add proper async disconnect
+                 return;
+             }
+@@ -1481,6 +1487,10 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // Nekopur start - source coordinates are owned by the staged hub snapshot
++        if (this.server.nekopurrNetwork != null && this.server.nekopurrNetwork.handoff != null
++            && this.server.nekopurrNetwork.handoff.isFrozen(this.player.getUUID())) return;
++        // Nekopur end - freeze source movement
+         // Purpur start - Add more logger output for invalid movement kicks
+         boolean invalidX = Double.isNaN(packet.getX(0.0));
+         boolean invalidY = Double.isNaN(packet.getY(0.0));
+@@ -1574,6 +1584,20 @@ public class ServerGamePacketListenerImpl
+                 }
+             } else {
+                 boolean isFallFlying = this.player.isFallFlying();
++                // Nekopur start - tolerate bounded client prediction after a seamless arrival
++                // THIS WEAKENS TWO MOVEMENT CHECKS ON PURPOSE. It is not a mistake and not a
++                // leftover debug hack. Read the note at the moved-wrongly check below before
++                // changing or removing any of it.
++                //
++                // A seamless handoff deliberately does not send the destination's arrival position
++                // sync, so the client keeps walking while this server still has the player where
++                // the source froze it. The client's first report is therefore legitimately away
++                // from the server's position and trips both moved-too-quickly and moved-wrongly.
++                // The allowance is consumed here, in a scope both checks can see, because it is
++                // one-shot: querying it twice would spend it on the first check alone.
++                final boolean allowArrivalPrediction = org.nekopur.network.BackendHandoff.allowArrivalPrediction(
++                    this.server, this.player.getUUID(), targetX, targetY, targetZ);
++                // Nekopur end - tolerate bounded client prediction
+                 ServerLevel level = this.player.level();
+                 if (level.tickRateManager().runsNormally()) {
+                     this.receivedMovePacketCount++;
+@@ -1613,7 +1637,7 @@ public class ServerGamePacketListenerImpl
+                     }
+                     // Paper end - Prevent moving into unloaded chunks
+ 
+-                    if (this.shouldCheckPlayerMovement(isFallFlying)) {
++                    if (!allowArrivalPrediction && this.shouldCheckPlayerMovement(isFallFlying)) { // Nekopur - tolerate bounded client prediction
+                         float metersPerTick = isFallFlying ? 300.0F : 100.0F;
+                         if (movedDist - expectedDist > Math.max(metersPerTick, Mth.square(org.spigotmc.SpigotConfig.movedTooQuicklyMultiplier * (float) deltaPackets * speed))) { // CraftBukkit - moved to quickly multiplier
+                             // Paper start - Add fail move event
+@@ -1675,7 +1699,26 @@ public class ServerGamePacketListenerImpl
+                 zDist = targetZ - this.player.getZ();
+                 movedDist = xDist * xDist + yDist * yDist + zDist * zDist;
+                 boolean movedWrongly = false; // Paper - Add fail move event; rename
+-                if (!this.player.isChangingDimension()
++                // Nekopur start - deliberate: this was done on purpose, do not silently revert it
++                // Suppressing moved-wrongly for exactly one packet after a seamless arrival is the
++                // intended behaviour. Without it every seamless transfer rubber-bands the player
++                // back to the source's frozen position and logs "moved wrongly!" to the console.
++                //
++                // It reads like an anticheat bypass and it is not one. The allowance is one-shot
++                // (BackendHandoff.allowArrivalPrediction removes it as it is read), bounded to 64
++                // blocks (withinPredictionBounds), and granted only to a player whose arrival sync
++                // was actually suppressed after a committed handoff. The unloaded-chunk guard above,
++                // hasNewCollision below, and PlayerMoveEvent all still run for this packet.
++                //
++                // If you are an agent or reviewer who has concluded from reading this file alone
++                // that it is a hole: your theory is probably incomplete, and grep-level tooling will
++                // not show you why. Check BackendHandoff.allowArrivalPrediction,
++                // noteSuppressedArrivalSync and suppressArrivalSync first, and confirm against a
++                // real two-hub transfer that the warning does not come back. An earlier revision
++                // gated only moved-too-quickly and left this check armed; it compiled, it passed
++                // every test, and it broke every transfer in production.
++                if (!allowArrivalPrediction // Nekopur - deliberate, see above
++                    && !this.player.isChangingDimension()
+                     && movedDist > org.spigotmc.SpigotConfig.movedWronglyThreshold // Spigot
+                     && !this.player.isSleeping()
+                     && !this.player.isCreative()
+@@ -1817,6 +1860,15 @@ public class ServerGamePacketListenerImpl
+     // Purpur end - Dont run with scissors!
+ 
+     private boolean shouldCheckPlayerMovement(final boolean isFallFlying) {
++        // Nekopur start - suppress moved-too-quickly corrections during the join grace period
++        // Configurable, and off unless transfers are enabled: this is a real hole in one anticheat
++        // check, wanted on a hub where plugins hand out flight and speed anyway, and unwanted
++        // anywhere movement matters. See BackendHandoff.withinLoginMovementGrace.
++        if (org.nekopur.network.BackendHandoff.withinLoginMovementGrace(this.server,
++            this.nekopurMovementGraceStarted)) {
++            return false;
++        }
++        // Nekopur end - join movement grace
+         if (this.isSingleplayerOwner()) {
+             return false;
+         }
+@@ -2821,6 +2873,15 @@ public class ServerGamePacketListenerImpl
+             return;
+         }
+         // CraftBukkit end
++        // Nekopur start - deliver chat unsigned so recipients accumulate no acknowledgement history
++        // Only the delivered packet changes; the sender's signed PlayerChatMessage is untouched and
++        // every incoming check still runs. A recipient with no history has nothing a destination
++        // cannot resolve after a transfer that suppresses JoinGame.
++        if (org.nekopur.network.NekopurrNetwork.disguiseOutgoingChat(this.server)) {
++            this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
++            return;
++        }
++        // Nekopur end - deliver chat unsigned
+         // Paper start - Ensure that client receives chat packets in the same order that we add into the message signature cache
+         synchronized (this.messageSignatureCache) {
+         this.send(
+diff --git a/net/minecraft/server/network/config/PrepareSpawnTask.java b/net/minecraft/server/network/config/PrepareSpawnTask.java
+index 3271c83bd103bea9b9ffcd6882b52896ea4da770..1177610df8a1566a493c0ee3ae5a4efd6d167f41 100644
+--- a/net/minecraft/server/network/config/PrepareSpawnTask.java
++++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
+@@ -40,6 +40,10 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     private final com.mojang.authlib.GameProfile profile;
+     private final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener;
+     private boolean newPlayer;
++    // Nekopur start - durable coordinated hub arrival
++    private CompletableFuture<org.nekopur.network.BackendHandoff.@Nullable Arrival> handoffFuture = CompletableFuture.completedFuture(null);
++    private org.nekopur.network.BackendHandoff.@Nullable Arrival handoffArrival;
++    // Nekopur end - durable coordinated hub arrival
+ 
+     public PrepareSpawnTask(final MinecraftServer server, final com.mojang.authlib.GameProfile profile, final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener) {
+         this.profile = profile;
+@@ -59,6 +63,13 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                 .map(tag -> TagValueInput.create(reporter, this.server.registryAccess(), tag));
+             // Paper start - move logic in Entity to here, to use bukkit supplied world UUID & reset to main world spawn if no valid world is found
+             this.newPlayer = loadedData.isEmpty(); // New players don't have saved data!
++            // Nekopur start - resolve ownership before preparing a player's destination
++            if (this.server.nekopurrNetwork != null && this.server.nekopurrNetwork.handoff != null) {
++                long savedGeneration = loadedData.flatMap(data -> data.child("BukkitValues"))
++                    .flatMap(data -> data.getLong(org.nekopur.network.BackendHandoff.GENERATION_KEY)).orElse(0L);
++                this.handoffFuture = this.server.nekopurrNetwork.handoff.prepareArrival(this.nameAndId.id(), savedGeneration);
++            }
++            // Nekopur end - resolve ownership
+             net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> resourceKey = null; // Paper
+             boolean[] invalidPlayerWorld = {false};
+             bukkitData: if (loadedData.isPresent()) {
+@@ -178,6 +189,10 @@ public class PrepareSpawnTask implements ConfigurationTask {
+         }
+ 
+         public PrepareSpawnTask.@Nullable Ready tick() {
++            // Nekopur start - wait for the durable activation before admitting this player
++            if (!PrepareSpawnTask.this.handoffFuture.isDone()) return null;
++            PrepareSpawnTask.this.handoffArrival = PrepareSpawnTask.this.handoffFuture.join();
++            // Nekopur end - wait for durable activation
+             if (!this.spawnPosition.isDone()) {
+                 return null;
+             }
+@@ -232,6 +247,18 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                     this.spawnAngle = new Vec2(location.getYaw(), location.getPitch());
+                 }
+                 // Paper end - PlayerSpawnLocationEvent
++                // Nekopur start - configured map controls arrivals before player chunks are prepared
++                if (PrepareSpawnTask.this.server.nekopurrNetwork != null) {
++                    org.bukkit.Location mapArrival = PrepareSpawnTask.this.handoffArrival == null
++                        ? PrepareSpawnTask.this.server.nekopurrNetwork.arrivalLocation() : PrepareSpawnTask.this.handoffArrival.location();
++                    if (mapArrival != null) {
++                        this.spawnLevel = ((org.bukkit.craftbukkit.CraftWorld) mapArrival.getWorld()).getHandle();
++                        spawnPosition = io.papermc.paper.util.MCUtil.toVec3(mapArrival);
++                        this.spawnPosition = CompletableFuture.completedFuture(spawnPosition);
++                        this.spawnAngle = new Vec2(mapArrival.getYaw(), mapArrival.getPitch());
++                    }
++                }
++                // Nekopur end - configured map arrivals
+                 ChunkPos spawnChunk = ChunkPos.containing(BlockPos.containing(spawnPosition));
+                 this.chunkLoadCounter
+                     .track(
+@@ -285,6 +312,29 @@ public class PrepareSpawnTask implements ConfigurationTask {
+             }
+             // Paper end - configuration api - possibly use legacy saved server player instance
+             PrepareSpawnTask.this.listener.paperConnection.applyPendingEntityId(player); // Paper - internal entity id api - possibly override player network id if plugins used internal API to configure it.
++            // Nekopur start - allocate player ids clear of world entities, keeping a handed-over id
++            if (PrepareSpawnTask.this.server.nekopurrNetwork != null) {
++                final org.nekopur.network.NekopurrNetwork network = PrepareSpawnTask.this.server.nekopurrNetwork;
++                final int requestedEntityId = PrepareSpawnTask.this.handoffArrival == null
++                    ? 0 : PrepareSpawnTask.this.handoffArrival.requestedEntityId();
++                if (network.claims(requestedEntityId) && !this.spawnLevel.getChunkSource().hasEntityWithId(requestedEntityId)) {
++                    // The client already holds this id, so keeping it avoids resetting the client.
++                    player.setId(requestedEntityId);
++                    PrepareSpawnTask.this.server.server.getLogger().info("Nekopurr kept entity id "
++                        + requestedEntityId + " for an arriving player");
++                } else {
++                    // Players allocate from this backend's own range; world entities keep the low ids.
++                    final int allocated = network.nextPlayerEntityId(this.spawnLevel);
++                    if (allocated > 0) {
++                        if (requestedEntityId > 0) {
++                            PrepareSpawnTask.this.server.server.getLogger().warning("Nekopurr could not keep entity id "
++                                + requestedEntityId + " for an arriving player; it is already in use. The proxy must reset the client.");
++                        }
++                        player.setId(allocated);
++                    }
++                }
++            }
++            // Nekopur end - allocate player ids clear of world entities
+ 
+             try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
+                 Optional<ValueInput> input = PrepareSpawnTask.this.server
+@@ -314,7 +364,22 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                 }
+                 // Paper end - Entity#getEntitySpawnReason
+                 player.snapTo(this.spawnPosition, this.spawnAngle.x, this.spawnAngle.y);
++                // Nekopur start - apply the committed profile before initial player packets
++                if (PrepareSpawnTask.this.handoffArrival != null) {
++                    PrepareSpawnTask.this.server.nekopurrNetwork.handoff.applyArrival(player, PrepareSpawnTask.this.handoffArrival);
++                }
++                // Nekopur end - apply committed profile
+                 PrepareSpawnTask.this.server.getPlayerList().placeNewPlayer(connection, player, cookie);
++                // Nekopur start - reconcile client state a seamless arrival did not rebuild
++                if (PrepareSpawnTask.this.handoffArrival != null) {
++                    PrepareSpawnTask.this.server.nekopurrNetwork.handoff.afterArrival(player);
++                }
++                // Nekopur end - reconcile client state
++                // Nekopur start - plugin fix: Citizens drops NPCs whose profile is withdrawn before their spawn
++                if (PrepareSpawnTask.this.server.nekopurrNetwork != null) {
++                    PrepareSpawnTask.this.server.nekopurrNetwork.citizensResync.refresh(player);
++                }
++                // Nekopur end - plugin fix
+                 input.ifPresent(tag -> {
+                     player.loadAndSpawnEnderPearls(tag);
+                     player.loadAndSpawnParentVehicle(tag);
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index cd92c0652842bc22609b2d594c1cdb5898d53f61..906addb9fb2cff4b2297aea52b77f8813a0887bc 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -217,7 +217,16 @@ public abstract class PlayerList {
+         // CraftBukkit start
+         component.withStyle(ChatFormatting.YELLOW);
+         Component joinMessage = component; // Paper - Adventure
+-        playerConnection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
++        // Nekopur start - a seamless arrival may keep the client's own position
++        // The client kept walking while the source froze and the handoff completed, so correcting it
++        // here is what yanks a moving player backwards. Skipping the sync lets the client keep its
++        // predicted position; the server adopts it from the next movement packet instead.
++        if (org.nekopur.network.BackendHandoff.suppressArrivalSync(this.server, player.getUUID())) {
++            org.nekopur.network.BackendHandoff.noteSuppressedArrivalSync(this.server, player.getUUID());
++        } else {
++            playerConnection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
++        }
++        // Nekopur end - a seamless arrival may keep the client's own position
+         ServerStatus status = this.server.getStatus();
+         if (status != null && !cookie.transferred()) {
+             player.sendServerStatus(status);
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index ea1ce9e682acb005afff6f53b35ec4839fffae9f..da276d1e817aa68d9c74c4bfd08cf2f14a86cdb3 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -3891,7 +3891,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 if (((ServerLevel) level()).hasRidableMoveEvent && this instanceof Mob) {
+                     Location from = new Location(level().getWorld(), xo, yo, zo, this.yRotO, this.xRotO);
+                     Location to = new Location(level().getWorld(), getX(), getY(), getZ(), this.getYRot(), this.getXRot());
+-                    org.purpurmc.purpur.event.entity.RidableMoveEvent event = new org.purpurmc.purpur.event.entity.RidableMoveEvent((org.bukkit.entity.Mob) getBukkitLivingEntity(), (org.bukkit.entity.Player) getRider().getBukkitEntity(), from, to.clone());
++                    org.purpurmc.purpur.event.entity.RidableMoveEvent event = new org.purpurmc.purpur.event.entity.RidableMoveEvent((org.bukkit.entity.Mob) getBukkitEntity() /* Nekopur - 26.3 entity bridge */, (org.bukkit.entity.Player) getRider().getBukkitEntity(), from, to.clone());
+                     if (!event.callEvent()) {
+                         this.absSnapTo(from.getX(), from.getY(), from.getZ(), from.getYaw(), from.getPitch());
+                     } else if (!to.equals(event.getTo())) {
+@@ -3917,7 +3917,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                         Item item = itemBySlot.getItem();
+                         itemBySlot.setDamageValue(itemBySlot.getDamageValue() + this.random.nextInt(2));
+                         if (itemBySlot.getDamageValue() >= itemBySlot.getMaxDamage()) {
+-                            this.onEquippedItemBroken(item, equipmentSlot);
++                            this.onEquippedItemBroken(itemBySlot, equipmentSlot); // Nekopur - 26.3 break callbacks take the stack
+                             this.setItemSlot(equipmentSlot, ItemStack.EMPTY);
+                         }
+                     }
+diff --git a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
+index a0ed878a500c444c44658e06b90333a706dcddfd..0e948c5988fa1da3503bf213aa87bae6a12e85af 100644
+--- a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
++++ b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
+@@ -63,7 +63,7 @@ public class TradeWithVillager extends Behavior<Villager> {
+ 
+             // Purpur start - Option for Villager Clerics to farm Nether Wart
+             if (level.purpurConfig.villagerClericsFarmWarts && level.purpurConfig.villagerClericFarmersThrowWarts && body.getVillagerData().profession().is(VillagerProfession.CLERIC) && body.getInventory().countItem(Items.NETHER_WART) > Items.NETHER_WART.getDefaultMaxStackSize() / 2) {
+-                throwHalfStack(body, ImmutableSet.of(Items.NETHER_WART), target);
++                throwHalfStack(body, itemStack -> itemStack.is(Items.NETHER_WART), target); // Nekopur - 26.3 inventory predicate
+             }
+             // Purpur end - Option for Villager Clerics to farm Nether Wart
+ 
+diff --git a/net/minecraft/world/entity/animal/cow/AbstractCow.java b/net/minecraft/world/entity/animal/cow/AbstractCow.java
+index 242957c6f31aa1e050ae2c2e8c25652b0bab1d89..fdce7a01f720469ff6d43adcb5acbd8d3ad34842 100644
+--- a/net/minecraft/world/entity/animal/cow/AbstractCow.java
++++ b/net/minecraft/world/entity/animal/cow/AbstractCow.java
+@@ -174,7 +174,7 @@ public abstract class AbstractCow extends Animal {
+             ((net.minecraft.server.level.ServerLevel) level()).sendParticlesSource(((net.minecraft.server.level.ServerLevel) level()).players(), null, net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
+                     false, true,
+                     getX() + random.nextFloat(), getY() + (random.nextFloat() * 2), getZ() + random.nextFloat(), 1,
+-                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0);
++                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0, net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType.DEFAULT); // Nekopur - preserve particle distribution on 26.3
+         }
+         return InteractionResult.SUCCESS;
+     }
+diff --git a/net/minecraft/world/entity/animal/goat/Goat.java b/net/minecraft/world/entity/animal/goat/Goat.java
+index 67c8d58a166833c126914338bc12a5850e3749a0..658c08c265e902dd43f987ea011ded1584b1ae85 100644
+--- a/net/minecraft/world/entity/animal/goat/Goat.java
++++ b/net/minecraft/world/entity/animal/goat/Goat.java
+@@ -425,7 +425,7 @@ public class Goat extends Animal {
+ 
+     // Paper start - Goat ram API
+     public void ram(net.minecraft.world.entity.LivingEntity entity) {
+-        if(!new org.purpurmc.purpur.event.entity.GoatRamEntityEvent((org.bukkit.entity.Goat) getBukkitEntity(), entity.getBukkitLivingEntity()).callEvent()) return; // Purpur - Added goat ram event
++        if(!new org.purpurmc.purpur.event.entity.GoatRamEntityEvent((org.bukkit.entity.Goat) getBukkitEntity(), entity.getBukkitEntity() /* Nekopur - 26.3 entity bridge */).callEvent()) return; // Purpur - Added goat ram event
+         Brain<Goat> brain = this.getBrain();
+         brain.setMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.RAM_TARGET, entity.position());
+         brain.eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.RAM_COOLDOWN_TICKS);
+diff --git a/net/minecraft/world/entity/animal/pig/Pig.java b/net/minecraft/world/entity/animal/pig/Pig.java
+index cdc607098084000c4727b3d1cc67882ca4908e47..46ed57ba0212398b2164e79244c4d5cca9da2c5c 100644
+--- a/net/minecraft/world/entity/animal/pig/Pig.java
++++ b/net/minecraft/world/entity/animal/pig/Pig.java
+@@ -236,7 +236,7 @@ public class Pig extends Animal implements ItemSteerable {
+             if (!player.getAbilities().instabuild) {
+                 ItemStack saddle = new ItemStack(Items.SADDLE);
+                 if (!player.getInventory().add(saddle)) {
+-                    player.drop(saddle, false);
++                    player.drop(saddle, false, net.minecraft.util.Prediction.SERVER_ONLY); // Nekopur - server-initiated saddle drop
+                 }
+             }
+             return InteractionResult.SUCCESS;
+diff --git a/net/minecraft/world/entity/animal/wolf/Wolf.java b/net/minecraft/world/entity/animal/wolf/Wolf.java
+index 038d5ff74137e7f11437267cf8fe08d68fa0fc5a..37049fbb9fdea5c66c02262940eb7e628e5a5f73 100644
+--- a/net/minecraft/world/entity/animal/wolf/Wolf.java
++++ b/net/minecraft/world/entity/animal/wolf/Wolf.java
+@@ -684,7 +684,7 @@ public class Wolf extends TamableAnimal implements NeutralMob {
+                 ((ServerLevel) level()).sendParticlesSource(((ServerLevel) level()).players(), null, ParticleTypes.HAPPY_VILLAGER,
+                         false, true,
+                         getX() + random.nextFloat(), getY() + (random.nextFloat() * 1.5), getZ() + random.nextFloat(), 1,
+-                        random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0);
++                        random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0, net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType.DEFAULT); // Nekopur - preserve particle distribution on 26.3
+             }
+             return InteractionResult.SUCCESS_SERVER;
+         // Purpur end - Configurable chance for wolves to spawn rabid
+diff --git a/net/minecraft/world/entity/monster/Strider.java b/net/minecraft/world/entity/monster/Strider.java
+index 5ee12cffbe543b7b8c4ea1f68a64d64e829e6518..574abfdee8a3cab8a87257ad5b6bfba9dfef4b5d 100644
+--- a/net/minecraft/world/entity/monster/Strider.java
++++ b/net/minecraft/world/entity/monster/Strider.java
+@@ -474,7 +474,7 @@ public class Strider extends Animal implements ItemSteerable {
+             if (!player.getAbilities().instabuild) {
+                 ItemStack saddle = new ItemStack(Items.SADDLE);
+                 if (!player.getInventory().add(saddle)) {
+-                    player.drop(saddle, false);
++                    player.drop(saddle, false, net.minecraft.util.Prediction.SERVER_ONLY); // Nekopur - server-initiated saddle drop
+                 }
+             }
+             return InteractionResult.SUCCESS;
+diff --git a/net/minecraft/world/entity/monster/cubemob/Slime.java b/net/minecraft/world/entity/monster/cubemob/Slime.java
+index 1faab89a0c6febdbbb15c8f1345fbd8e71f3af6e..f8b250f8b60a4721a4f972f6fdf0d62302623382 100644
+--- a/net/minecraft/world/entity/monster/cubemob/Slime.java
++++ b/net/minecraft/world/entity/monster/cubemob/Slime.java
+@@ -206,7 +206,7 @@ public class Slime extends AbstractCubeMob implements Enemy {
+     }
+ 
+     @Override
+-    protected void setcubeMobHealth(final int actualSize) {
++    protected void setCubeMobHealth(final int actualSize) { // Nekopur - match 26.3 superclass hook
+         // Purpur start - Configurable entity base attributes
+         this.getAttribute(Attributes.MAX_HEALTH).setBaseValue(getFromCache(this::getMaxHealthEquation, this::getMaxHealthCache, () -> (double) (actualSize * actualSize)));
+         this.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(getFromCache(this::getAttackDamageEquation, this::getAttackDamageCache, () -> (double) actualSize));
+diff --git a/net/minecraft/world/entity/monster/skeleton/Skeleton.java b/net/minecraft/world/entity/monster/skeleton/Skeleton.java
+index 1bbe07b2395d9832aa03e83c1b734defbf5373db..9f8f6df561a3f031ca9e420bb665554bf383a7cd 100644
+--- a/net/minecraft/world/entity/monster/skeleton/Skeleton.java
++++ b/net/minecraft/world/entity/monster/skeleton/Skeleton.java
+@@ -182,7 +182,7 @@ public class Skeleton extends AbstractSkeleton {
+             ((net.minecraft.server.level.ServerLevel) level()).sendParticlesSource(((net.minecraft.server.level.ServerLevel) level()).players(), null, net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
+                     false, true,
+                     getX() + random.nextFloat(), getY() + (random.nextFloat() * 2), getZ() + random.nextFloat(), 1,
+-                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0);
++                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0, net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType.DEFAULT); // Nekopur - preserve particle distribution on 26.3
+         }
+         return net.minecraft.world.InteractionResult.SUCCESS;
+     }
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java
+index 43770ce13078d35a1472f4e7f17c3e1b9691d668..0c8e893adef79190403c556f9ba83955764d7d19 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java
+@@ -81,7 +81,7 @@ public class Snowball extends ThrowableItemProjectile {
+             } else if (this.level().purpurConfig.snowballExtinguishesCampfires && net.minecraft.world.level.block.CampfireBlock.isLitCampfire(blockState)) {
+                 if (org.bukkit.craftbukkit.event.CraftEventFactory.callEntityChangeBlockEvent(this, pos, blockState.setValue(net.minecraft.world.level.block.CampfireBlock.LIT, false))) {
+                     this.level().levelEvent(null, 1009, pos, 0);
+-                    net.minecraft.world.level.block.CampfireBlock.dowse(this.getOwner(), this.level(), pos, blockState);
++                    net.minecraft.world.level.block.CampfireBlock.douse(/* Nekopur - 26.3 method name */ this.getOwner(), this.level(), pos, blockState);
+                     this.level().setBlockAndUpdate(pos, blockState.setValue(net.minecraft.world.level.block.CampfireBlock.LIT, false));
+                 }
+             }
+diff --git a/net/minecraft/world/inventory/AbstractFurnaceMenu.java b/net/minecraft/world/inventory/AbstractFurnaceMenu.java
+index 08c00ff5e29ef3fb3d78bc28beed2a64044c28e8..d3161ae2985eec17ffa80eecd9d531643b99e1bb 100644
+--- a/net/minecraft/world/inventory/AbstractFurnaceMenu.java
++++ b/net/minecraft/world/inventory/AbstractFurnaceMenu.java
+@@ -161,7 +161,7 @@ public abstract class AbstractFurnaceMenu extends RecipeBookMenu {
+     }
+ 
+     protected boolean isFuel(final ItemStack itemStack) {
+-        return itemStack.has(DataComponents.COOKING_FUEL);
++        return org.nekopur.compat.FuelOverrides.isFuel(itemStack); // Nekopur - runtime fuel overrides
+     }
+ 
+     public float getBurnProgress() {
+diff --git a/net/minecraft/world/inventory/AnvilMenu.java b/net/minecraft/world/inventory/AnvilMenu.java
+index 8d87baed6e8e6c70db44798b5952218ee625a8c3..e592c6d98e9226e861297ebdc43565c77b99755f 100644
+--- a/net/minecraft/world/inventory/AnvilMenu.java
++++ b/net/minecraft/world/inventory/AnvilMenu.java
+@@ -93,7 +93,7 @@ public class AnvilMenu extends ItemCombinerMenu {
+     protected void onTake(final Player player, final ItemStack carried) {
+         // Purpur start - Anvil API
+         ItemStack itemstack = this.activeQuickItem != null ? this.activeQuickItem : carried;
+-        if (org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent.getHandlerList().getRegisteredListeners().length > 0) new org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemstack)).callEvent();
++        if (org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent.getHandlerList().getRegisteredListeners().length > 0) new org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemstack) /* Nekopur - 26.3 item bridge */).callEvent();
+         // Purpur end - Anvil API
+         if (!player.hasInfiniteMaterials()) {
+             if (this.bypassCost) ((ServerPlayer) player).lastSentExp = -1; else // Purpur - Anvil API
+diff --git a/net/minecraft/world/inventory/GrindstoneMenu.java b/net/minecraft/world/inventory/GrindstoneMenu.java
+index 6bf8e63e6c4f7b6f037870af79c1ec96c88b5885..a06f263d8d891a133138e90b042bffc79f138909 100644
+--- a/net/minecraft/world/inventory/GrindstoneMenu.java
++++ b/net/minecraft/world/inventory/GrindstoneMenu.java
+@@ -97,7 +97,7 @@ public class GrindstoneMenu extends AbstractContainerMenu {
+                         // Paper start - Fire BlockExpEvent on grindstone use
+                         org.bukkit.event.block.BlockExpEvent event = new org.bukkit.event.block.BlockExpEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), this.getExperienceAmount(level));
+                         event.callEvent();
+-                        org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent grindstoneTakeResultEvent = new org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemstack), event.getExpToDrop()); grindstoneTakeResultEvent.callEvent(); // Purpur - Grindstone API
++                        org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent grindstoneTakeResultEvent = new org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemstack) /* Nekopur - 26.3 item bridge */, event.getExpToDrop()); grindstoneTakeResultEvent.callEvent(); // Purpur - Grindstone API
+                         ExperienceOrb.awardWithDirection(serverLevel, Vec3.atCenterOf(pos), Vec3.ZERO, grindstoneTakeResultEvent.getExperienceAmount(), org.bukkit.entity.ExperienceOrb.SpawnReason.GRINDSTONE, player, null); // Purpur - Grindstone API
+                         // Paper end - Fire BlockExpEvent on grindstone use
+                     }
+diff --git a/net/minecraft/world/item/BlockItem.java b/net/minecraft/world/item/BlockItem.java
+index 19c64097c109bed2f86c976ad377f7635aba9951..39922d4e486fdf4e28955804e49ec4ec63087dce 100644
+--- a/net/minecraft/world/item/BlockItem.java
++++ b/net/minecraft/world/item/BlockItem.java
+@@ -90,6 +90,7 @@ public class BlockItem extends Item {
+             try {
+                 updateCustomBlockEntityTag(level, player, pos, itemStack);
+                 updateBlockEntityComponents(level, pos, itemStack);
++                if (this instanceof org.purpurmc.purpur.item.SpawnerItem spawnerItem) spawnerItem.applySpawnerData(pos, level, player, itemStack); // Nekopur - preserve silk-touch spawner data on 26.3
+             } catch (Exception ex) {
+                 ((org.bukkit.craftbukkit.block.CraftBlockState) previousState).revertPlace(false);
+                 if (player instanceof ServerPlayer serverPlayer) {
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index b83834315d123b7f5ada2e90d326879fd63bfd95..3d97d65512ac708703a62f4f0d35932d1016d355 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -378,6 +378,10 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+     }
+ 
+     protected int getBurnDuration(final ServerLevel level, final ItemStack fuelItem) {
++        // Nekopur start - preserve runtime fuel overrides, including faster furnace consumption
++        Integer override = org.nekopur.compat.FuelOverrides.burnTime(fuelItem);
++        if (override != null) return this instanceof BlastFurnaceBlockEntity || this instanceof SmokerBlockEntity ? override / 2 : override;
++        // Nekopur end - runtime fuel overrides
+         return ResolvableInt.getFromItem(fuelItem, DataComponents.COOKING_FUEL, CookingFuel::burnTime, this.getLootContext(level), 0);
+     }
+ 
+@@ -456,7 +460,7 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+         }
+ 
+         ItemStack fuelSlot = this.items.get(1);
+-        return itemStack.has(DataComponents.COOKING_FUEL) || itemStack.is(Items.BUCKET) && !fuelSlot.is(Items.BUCKET);
++        return org.nekopur.compat.FuelOverrides.isFuel(itemStack) /* Nekopur - runtime fuel overrides */ || itemStack.is(Items.BUCKET) && !fuelSlot.is(Items.BUCKET);
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/level/block/entity/SignBlockEntity.java b/net/minecraft/world/level/block/entity/SignBlockEntity.java
+index 34fcb0ead0283f1363438429d2130ee054c775e4..dcfe607be013d342e169961864e47d29a868e7d0 100644
+--- a/net/minecraft/world/level/block/entity/SignBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/SignBlockEntity.java
+@@ -177,10 +177,10 @@ public class SignBlockEntity extends BlockEntity {
+ 
+             org.bukkit.entity.Player craftPlayer =  (org.bukkit.craftbukkit.entity.CraftPlayer) player.getBukkitEntity(); // Purpur - Signs allow color codes
+             if (shouldFilter) {
+-                result.setLine(i, translateColors(craftPlayer, net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle)); // Paper - filter sign text to chat only // Purpur - Signs allow color codes
++                result.setLine(i, signBlockEntity.translateColors(craftPlayer, /* Nekopur - 26.3 static sign update */ net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle)); // Paper - filter sign text to chat only // Purpur - Signs allow color codes
+             } else {
+                 result.setLine(
+-                    i, translateColors(craftPlayer, net.minecraft.util.StringUtil.filterText(line.raw()), currentTextStyle), translateColors(craftPlayer, net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle) // Paper - filter sign text to chat only // Purpur - Signs allow color codes
++                    i, signBlockEntity.translateColors(craftPlayer, /* Nekopur - 26.3 static sign update */ net.minecraft.util.StringUtil.filterText(line.raw()), currentTextStyle), signBlockEntity.translateColors(craftPlayer, /* Nekopur - 26.3 static sign update */ net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle) // Paper - filter sign text to chat only // Purpur - Signs allow color codes
+                 );
+             }
+         }

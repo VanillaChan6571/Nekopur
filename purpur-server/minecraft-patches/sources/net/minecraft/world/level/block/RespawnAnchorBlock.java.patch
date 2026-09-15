@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/level/block/RespawnAnchorBlock.java
 +++ b/net/minecraft/world/level/block/RespawnAnchorBlock.java
-@@ -176,7 +_,7 @@
+@@ -169,7 +_,7 @@
              }
          };
          Vec3 boomPos = Vec3.atCenterOf(pos);

@@ -26,10 +26,10 @@
 +    activeFork = purpur
 +    // Purpur end - Rebrand
 +
-+    /*updatingMinecraft { // Purpur start - TODO - snapshot - we don't need this
-         // oldPaperCommit = "d4fe85375af18bfa88f44d7c1e6a61904ae550cc"
++    /*updatingMinecraft { // Purpur start - Rebrand - we don't need this
+         oldPaperCommit = "e5fe71723e2ffde7cc9fafc085ac3bb73e63175e"
 -    }
-+    }*/ // Purpur end - TODO - snapshot - we don't need this
++    }*/ // Purpur end - Rebrand - we don't need this
  }
  
  tasks.generateDevelopmentBundle {
@@ -65,7 +65,7 @@
  dependencies {
 -    implementation(project(":paper-api"))
 +    implementation(project(":purpur-api")) // Purpur
-     implementation("ca.spottedleaf:leafpile:1.0.0")
+     implementation("ca.spottedleaf:leafpile:1.2.0")
      implementation("org.jline:jline-terminal-ffm:3.27.1") // use ffm on java 22+
      implementation("org.jline:jline-terminal-jni:3.27.1") // fall back to jni on java 21
 @@ -135,6 +_,10 @@
@@ -107,7 +107,7 @@
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
-@@ -237,7 +_,7 @@
+@@ -246,7 +_,7 @@
      jvmArgumentProviders.add(provider)
  }
  
@@ -116,7 +116,7 @@
  idea {
      module {
          generatedSourceDirs.add(generatedDir.toFile())
-@@ -315,7 +_,7 @@
+@@ -326,7 +_,7 @@
      mainClass.set(null as String?)
  }
  
@@ -125,7 +125,7 @@
      project("paper")
      versionFamily(paperweight.minecraftVersion.map { it.split(".", "-").takeWhile { part -> part.toIntOrNull() != null }.take(2).joinToString(".") })
      version(paperweight.minecraftVersion)
-@@ -330,4 +_,47 @@
+@@ -341,4 +_,47 @@
              }
          }
      }
