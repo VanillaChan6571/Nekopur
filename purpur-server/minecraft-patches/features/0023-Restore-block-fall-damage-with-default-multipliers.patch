@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: VanillaChanny <39040261+VanillaChan6571@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 19:36:02 -0700
+Subject: [PATCH] Restore block fall damage with default multipliers
+
+
+diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
+index 0e10e6afe8c68dd65c3533b68b635f40fd7351ee..9f1775148291d45efd4922cbff94fa67aa3a1919 100644
+--- a/net/minecraft/world/level/block/Block.java
++++ b/net/minecraft/world/level/block/Block.java
+@@ -583,7 +583,7 @@ public class Block extends BlockBehaviour implements ItemLike {
+     }
+ 
+     public void fallOn(final Level level, final BlockState state, final BlockPos pos, final Entity entity, final double fallDistance) {
+-        double reducedFallDistance = fallDistance * (1.0F - fallDistanceMultiplier); // Purpur - Configurable block fall damage modifiers
++        double reducedFallDistance = fallDistance * (1.0F - this.getFallDistanceReduction()) * this.fallDistanceMultiplier; // Nekopur - preserve vanilla cushioning and apply the configured distance multiplier
+         entity.causeFallDamage(reducedFallDistance, fallDamageMultiplier, entity.damageSources().fall()); // Purpur - Configurable block fall damage modifiers
+     }
+ 
