@@ -73,7 +73,7 @@ index 5a2d006b682fd9b53d0a490828eb79b4d085db94..29c5eb7f960a95edf0e11eeba64abe4e
                                  1.0F,
                                  1.0F
 diff --git a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
-index ec104015086a37c3fdf549aaf36ef40733b14802..a0ed878a500c444c44658e06b90333a706dcddfd 100644
+index ec104015086a37c3fdf549aaf36ef40733b14802..7d7f99d13526ff9c2fc440cdc47525f1086805eb 100644
 --- a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
 +++ b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
 @@ -61,6 +61,12 @@ public class TradeWithVillager extends Behavior<Villager> {
@@ -82,7 +82,7 @@ index ec104015086a37c3fdf549aaf36ef40733b14802..a0ed878a500c444c44658e06b90333a7
  
 +            // Purpur start - Option for Villager Clerics to farm Nether Wart
 +            if (level.purpurConfig.villagerClericsFarmWarts && level.purpurConfig.villagerClericFarmersThrowWarts && body.getVillagerData().profession().is(VillagerProfession.CLERIC) && body.getInventory().countItem(Items.NETHER_WART) > Items.NETHER_WART.getDefaultMaxStackSize() / 2) {
-+                throwHalfStack(body, ImmutableSet.of(Items.NETHER_WART), target);
++                throwHalfStack(body, itemStack -> itemStack.is(Items.NETHER_WART), target);
 +            }
 +            // Purpur end - Option for Villager Clerics to farm Nether Wart
 +
@@ -136,7 +136,7 @@ index 7d3e843c2d3c5e15b7bea7302d6118419d3a4957..1da9f1cdb2ee8b1514c79fee24460f85
              brain.setMemory(MemoryModuleType.SECONDARY_JOB_SITE, jobSites);
          } else {
 diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
-index d6daace9e1617c641fe376b3796e2025b6aa71f4..ed8ebcdb6e568f9e1609dd86eb329969a204e068 100644
+index efab86a3f0089dc67f0c5e0819dc4e73bd9adcb2..0bd997faf628e7184afff12a62986992f4aebb21 100644
 --- a/net/minecraft/world/entity/npc/villager/Villager.java
 +++ b/net/minecraft/world/entity/npc/villager/Villager.java
 @@ -145,7 +145,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
@@ -148,7 +148,7 @@ index d6daace9e1617c641fe376b3796e2025b6aa71f4..ed8ebcdb6e568f9e1609dd86eb329969
                          ImmutableSet.of(Pair.of(MemoryModuleType.JOB_SITE, MemoryStatus.VALUE_PRESENT))
                      )
                  );
-@@ -851,7 +851,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -921,7 +921,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
      }
  
      public boolean hasFarmSeeds() {

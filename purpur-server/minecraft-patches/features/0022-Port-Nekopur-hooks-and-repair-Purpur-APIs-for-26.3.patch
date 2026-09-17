@@ -5,7 +5,7 @@ Subject: [PATCH] Port Nekopur hooks and repair Purpur APIs for 26.3
 
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb166e4fbd41 100644
+index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed627a49d38 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -330,6 +330,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -16,7 +16,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
      public boolean lagging = false; // Purpur - Lagging threshold
      protected boolean upnp = false; // Purpur - UPnP Port Forwarding
      // Paper start - improve tick loop
-@@ -678,7 +679,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -764,7 +765,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
                          Objects.requireNonNullElse(worldCreator.forcedSpawnPitch(), LevelData.RespawnData.DEFAULT.pitch())
                      ));
                  } else {
@@ -28,7 +28,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
                  }
                  // Paper end - Allow direct setting spawn location
                  levelData.setInitialized(true);
-@@ -798,6 +803,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -884,6 +889,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          // CraftBukkit end
          ChunkLoadCounter chunkLoadCounter = new ChunkLoadCounter();
  
@@ -36,7 +36,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
          if (true) { // CraftBukkit
              chunkLoadCounter.track(level, () -> {
                  TicketStorage savedTickets = level.getDataStorage().get(TicketStorage.TYPE);
-@@ -815,6 +821,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -901,6 +907,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          } while (chunkLoadCounter.pendingChunks() > 0);
  
          level.levelLoadListener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS); // Paper - per world load listener
@@ -44,7 +44,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
          level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
          this.updateEffectiveRespawnData();
          this.forceTicks = false; // CraftBukkit
-@@ -901,6 +908,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -992,6 +999,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          }
          if (!this.hasLoggedStop && this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
          this.shutdownThread = Thread.currentThread(); // Paper - Improved watchdog support
@@ -52,7 +52,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
          org.spigotmc.WatchdogThread.doStop(); // Paper - Improved watchdog support
          // CraftBukkit end
          this.packetProcessor.close();
-@@ -1157,6 +1165,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1268,6 +1276,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              LOGGER.info("Running delayed init tasks");
              new io.papermc.paper.threadedregions.RegionizedServerInitEvent().callEvent(); // Call Folia init event
              this.server.getScheduler().mainThreadHeartbeat(); // run all 1 tick delay tasks during init,
@@ -60,7 +60,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
              // this is going to be the first thing the tick process does anyway, so move done and run it after
              // everything is init before watchdog tick.
              // anything at 3+ won't be caught here but also will trip watchdog....
-@@ -1471,6 +1480,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1583,6 +1592,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          long nano = Util.getNanos();
          int emptyTickThreshold = this.pauseWhenEmptySeconds() * 20;
          this.removeDisabledPluginsBlockingSleep(); // Paper - API to allow/disallow tick sleeping
@@ -74,7 +74,7 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
          if (emptyTickThreshold > 0) {
              if (this.playerList.getPlayerCount() == 0 && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty()) { // Paper - API to allow/disallow tick sleeping
                  this.emptyTicks++;
-@@ -3015,6 +3031,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -3140,6 +3156,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
  
      // Paper start - API to check if the server is sleeping
      public boolean isTickPaused() {
@@ -83,10 +83,10 @@ index b9bf30f8d2858511193043fa5af8fa93e44c05d3..30f98c7773b65543db5e43109f44bb16
      }
  
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index b9ebaf42cc62636b48c02367f9ae42f20333c887..d2726e54810b59b538e67b4f1927688d0145211a 100644
+index 6f15458487248550ee723aabf7ab12216369ec4d..c38059b132903e335505d248f1be0041b31ec5c7 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
-@@ -697,6 +697,10 @@ public class ServerPlayer extends Player {
+@@ -727,6 +727,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
  
      @Override
      public void tick() {
@@ -97,28 +97,8 @@ index b9ebaf42cc62636b48c02367f9ae42f20333c887..d2726e54810b59b538e67b4f1927688d
          // CraftBukkit start
          if (this.joining) {
              this.joining = false;
-diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
-index 563d5b7915bb321365f40246cce5cc087a0f445b..2ba5e099c9fe8d6e7d4c5e432c75153408a198e3 100644
---- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
-+++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
-@@ -53,6 +53,7 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
-     private static final long KEEPALIVE_LIMIT = Long.getLong("paper.playerconnection.keepalive", 30) * 1000; // Paper - provide property to set keepalive limit
-     protected static final net.minecraft.resources.Identifier MINECRAFT_BRAND = net.minecraft.resources.Identifier.withDefaultNamespace("brand"); // Paper - Brand support
-     // Paper start - retain certain values
-+    public boolean purpurClient; // Nekopur - retain Purpur client detection on 26.3
-     public @Nullable String clientBrand;
-     public final java.util.Set<String> pluginMessagerChannels;
-     // Paper end - retain certain values
-@@ -148,6 +149,7 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
-                 return;
-             }
- 
-+            if (identifier.equals(net.minecraft.resources.Identifier.fromNamespaceAndPath("purpur", "client"))) this.purpurClient = true; // Nekopur - retain Purpur client detection
-             if (identifier.equals(MINECRAFT_BRAND)) {
-                 this.clientBrand = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(data)).readUtf(256);
-             }
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index cb7f783de7e3a8a8c15dbe30a3fad4da285f3029..579ba9516d49a27463f111cfdf47a7576e8551fa 100644
+index 42128d80a4c32fe8dc320282b17f8288310c24a0..2034a2885a7297c33080da822c33da40abba29d1 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -274,6 +274,8 @@ public class ServerGamePacketListenerImpl
@@ -141,15 +121,6 @@ index cb7f783de7e3a8a8c15dbe30a3fad4da285f3029..579ba9516d49a27463f111cfdf47a757
          if (packet.id() == this.awaitingTeleport) {
              if (this.awaitingPositionFromClient == null || containsInvalidValues(packet.x(), packet.y(), packet.z(), packet.yRot(), packet.xRot())) {
                  ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
-@@ -1362,7 +1368,7 @@ public class ServerGamePacketListenerImpl
- 
-             if (byteTotal > byteAllowed) {
-                 ServerGamePacketListenerImpl.LOGGER.warn("{} tried to send too large of a book. Book size: {} - Allowed: {} - Pages: {}", this.player.getScoreboardName(), byteTotal, byteAllowed, pageList.size());
--                org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent event = new org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent(player.getBukkitEntity(), itemstack.asBukkitCopy()); if (event.shouldKickPlayer()) // Purpur - PlayerBookTooLargeEvent
-+                org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent event = new org.purpurmc.purpur.event.player.PlayerBookTooLargeEvent(player.getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(itemstack) /* Nekopur - 26.3 item bridge */); if (event.shouldKickPlayer()) // Purpur - PlayerBookTooLargeEvent
-                 this.disconnectAsync(Component.literal("Book too large!"), org.bukkit.event.player.PlayerKickEvent.Cause.ILLEGAL_ACTION); // Paper - kick event cause // Paper - add proper async disconnect
-                 return;
-             }
 @@ -1481,6 +1487,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
@@ -252,7 +223,7 @@ index cb7f783de7e3a8a8c15dbe30a3fad4da285f3029..579ba9516d49a27463f111cfdf47a757
          synchronized (this.messageSignatureCache) {
          this.send(
 diff --git a/net/minecraft/server/network/config/PrepareSpawnTask.java b/net/minecraft/server/network/config/PrepareSpawnTask.java
-index 3271c83bd103bea9b9ffcd6882b52896ea4da770..1177610df8a1566a493c0ee3ae5a4efd6d167f41 100644
+index f6601bc30fa37a309923ea9883b04233f83b2c0b..6c6b362b402baa2199e389e2c985084a9f78e3da 100644
 --- a/net/minecraft/server/network/config/PrepareSpawnTask.java
 +++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
 @@ -40,6 +40,10 @@ public class PrepareSpawnTask implements ConfigurationTask {
@@ -308,9 +279,9 @@ index 3271c83bd103bea9b9ffcd6882b52896ea4da770..1177610df8a1566a493c0ee3ae5a4efd
 +                }
 +                // Nekopur end - configured map arrivals
                  ChunkPos spawnChunk = ChunkPos.containing(BlockPos.containing(spawnPosition));
-                 this.chunkLoadCounter
-                     .track(
-@@ -285,6 +312,29 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                 this.chunkLoadFuture = ((ca.spottedleaf.moonrise.patches.chunk_system.MoonriseChunkLoadCounter)this.chunkLoadCounter).trackLoadWithRadius(this.spawnLevel, spawnChunk, 3, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, ca.spottedleaf.concurrentutil.util.Priority.HIGH, () -> { Preparing.this.spawnLevel.getChunkSource().addTicketWithRadius(TicketType.PLAYER_SPAWN, spawnChunk, 3); }); // Paper - rewrite chunk system
+                 PrepareSpawnTask.this.loadListener.start(LevelLoadListener.Stage.LOAD_PLAYER_CHUNKS, this.chunkLoadCounter.totalChunks());
+@@ -281,6 +308,29 @@ public class PrepareSpawnTask implements ConfigurationTask {
              }
              // Paper end - configuration api - possibly use legacy saved server player instance
              PrepareSpawnTask.this.listener.paperConnection.applyPendingEntityId(player); // Paper - internal entity id api - possibly override player network id if plugins used internal API to configure it.
@@ -340,7 +311,7 @@ index 3271c83bd103bea9b9ffcd6882b52896ea4da770..1177610df8a1566a493c0ee3ae5a4efd
  
              try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
                  Optional<ValueInput> input = PrepareSpawnTask.this.server
-@@ -314,7 +364,22 @@ public class PrepareSpawnTask implements ConfigurationTask {
+@@ -310,7 +360,22 @@ public class PrepareSpawnTask implements ConfigurationTask {
                  }
                  // Paper end - Entity#getEntitySpawnReason
                  player.snapTo(this.spawnPosition, this.spawnAngle.x, this.spawnAngle.y);
@@ -364,7 +335,7 @@ index 3271c83bd103bea9b9ffcd6882b52896ea4da770..1177610df8a1566a493c0ee3ae5a4efd
                      player.loadAndSpawnEnderPearls(tag);
                      player.loadAndSpawnParentVehicle(tag);
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index cd92c0652842bc22609b2d594c1cdb5898d53f61..906addb9fb2cff4b2297aea52b77f8813a0887bc 100644
+index 90bb0473f0b7580e7162dbf492a50555c4e4e9bf..fdac8600cc11919f7eeb9a9cdb9f1dcb21d05563 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -217,7 +217,16 @@ public abstract class PlayerList {
@@ -385,86 +356,25 @@ index cd92c0652842bc22609b2d594c1cdb5898d53f61..906addb9fb2cff4b2297aea52b77f881
          ServerStatus status = this.server.getStatus();
          if (status != null && !cookie.transferred()) {
              player.sendServerStatus(status);
-diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index ea1ce9e682acb005afff6f53b35ec4839fffae9f..da276d1e817aa68d9c74c4bfd08cf2f14a86cdb3 100644
---- a/net/minecraft/world/entity/LivingEntity.java
-+++ b/net/minecraft/world/entity/LivingEntity.java
-@@ -3891,7 +3891,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
-                 if (((ServerLevel) level()).hasRidableMoveEvent && this instanceof Mob) {
-                     Location from = new Location(level().getWorld(), xo, yo, zo, this.yRotO, this.xRotO);
-                     Location to = new Location(level().getWorld(), getX(), getY(), getZ(), this.getYRot(), this.getXRot());
--                    org.purpurmc.purpur.event.entity.RidableMoveEvent event = new org.purpurmc.purpur.event.entity.RidableMoveEvent((org.bukkit.entity.Mob) getBukkitLivingEntity(), (org.bukkit.entity.Player) getRider().getBukkitEntity(), from, to.clone());
-+                    org.purpurmc.purpur.event.entity.RidableMoveEvent event = new org.purpurmc.purpur.event.entity.RidableMoveEvent((org.bukkit.entity.Mob) getBukkitEntity() /* Nekopur - 26.3 entity bridge */, (org.bukkit.entity.Player) getRider().getBukkitEntity(), from, to.clone());
-                     if (!event.callEvent()) {
-                         this.absSnapTo(from.getX(), from.getY(), from.getZ(), from.getYaw(), from.getPitch());
-                     } else if (!to.equals(event.getTo())) {
-@@ -3917,7 +3917,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
-                         Item item = itemBySlot.getItem();
-                         itemBySlot.setDamageValue(itemBySlot.getDamageValue() + this.random.nextInt(2));
-                         if (itemBySlot.getDamageValue() >= itemBySlot.getMaxDamage()) {
--                            this.onEquippedItemBroken(item, equipmentSlot);
-+                            this.onEquippedItemBroken(itemBySlot, equipmentSlot); // Nekopur - 26.3 break callbacks take the stack
-                             this.setItemSlot(equipmentSlot, ItemStack.EMPTY);
-                         }
-                     }
-diff --git a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
-index a0ed878a500c444c44658e06b90333a706dcddfd..0e948c5988fa1da3503bf213aa87bae6a12e85af 100644
---- a/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
-+++ b/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java
-@@ -63,7 +63,7 @@ public class TradeWithVillager extends Behavior<Villager> {
- 
-             // Purpur start - Option for Villager Clerics to farm Nether Wart
-             if (level.purpurConfig.villagerClericsFarmWarts && level.purpurConfig.villagerClericFarmersThrowWarts && body.getVillagerData().profession().is(VillagerProfession.CLERIC) && body.getInventory().countItem(Items.NETHER_WART) > Items.NETHER_WART.getDefaultMaxStackSize() / 2) {
--                throwHalfStack(body, ImmutableSet.of(Items.NETHER_WART), target);
-+                throwHalfStack(body, itemStack -> itemStack.is(Items.NETHER_WART), target); // Nekopur - 26.3 inventory predicate
-             }
-             // Purpur end - Option for Villager Clerics to farm Nether Wart
- 
-diff --git a/net/minecraft/world/entity/animal/cow/AbstractCow.java b/net/minecraft/world/entity/animal/cow/AbstractCow.java
-index 242957c6f31aa1e050ae2c2e8c25652b0bab1d89..fdce7a01f720469ff6d43adcb5acbd8d3ad34842 100644
---- a/net/minecraft/world/entity/animal/cow/AbstractCow.java
-+++ b/net/minecraft/world/entity/animal/cow/AbstractCow.java
-@@ -174,7 +174,7 @@ public abstract class AbstractCow extends Animal {
-             ((net.minecraft.server.level.ServerLevel) level()).sendParticlesSource(((net.minecraft.server.level.ServerLevel) level()).players(), null, net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
-                     false, true,
-                     getX() + random.nextFloat(), getY() + (random.nextFloat() * 2), getZ() + random.nextFloat(), 1,
--                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0);
-+                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0, net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType.DEFAULT); // Nekopur - preserve particle distribution on 26.3
-         }
-         return InteractionResult.SUCCESS;
-     }
-diff --git a/net/minecraft/world/entity/animal/goat/Goat.java b/net/minecraft/world/entity/animal/goat/Goat.java
-index 67c8d58a166833c126914338bc12a5850e3749a0..658c08c265e902dd43f987ea011ded1584b1ae85 100644
---- a/net/minecraft/world/entity/animal/goat/Goat.java
-+++ b/net/minecraft/world/entity/animal/goat/Goat.java
-@@ -425,7 +425,7 @@ public class Goat extends Animal {
- 
-     // Paper start - Goat ram API
-     public void ram(net.minecraft.world.entity.LivingEntity entity) {
--        if(!new org.purpurmc.purpur.event.entity.GoatRamEntityEvent((org.bukkit.entity.Goat) getBukkitEntity(), entity.getBukkitLivingEntity()).callEvent()) return; // Purpur - Added goat ram event
-+        if(!new org.purpurmc.purpur.event.entity.GoatRamEntityEvent((org.bukkit.entity.Goat) getBukkitEntity(), entity.getBukkitEntity() /* Nekopur - 26.3 entity bridge */).callEvent()) return; // Purpur - Added goat ram event
-         Brain<Goat> brain = this.getBrain();
-         brain.setMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.RAM_TARGET, entity.position());
-         brain.eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.RAM_COOLDOWN_TICKS);
 diff --git a/net/minecraft/world/entity/animal/pig/Pig.java b/net/minecraft/world/entity/animal/pig/Pig.java
-index cdc607098084000c4727b3d1cc67882ca4908e47..46ed57ba0212398b2164e79244c4d5cca9da2c5c 100644
+index fdb6b128bbc82ba36717afc48a06f2a9cd1ed78a..46ed57ba0212398b2164e79244c4d5cca9da2c5c 100644
 --- a/net/minecraft/world/entity/animal/pig/Pig.java
 +++ b/net/minecraft/world/entity/animal/pig/Pig.java
 @@ -236,7 +236,7 @@ public class Pig extends Animal implements ItemSteerable {
              if (!player.getAbilities().instabuild) {
                  ItemStack saddle = new ItemStack(Items.SADDLE);
                  if (!player.getInventory().add(saddle)) {
--                    player.drop(saddle, false);
+-                    player.drop(saddle, false, net.minecraft.util.Prediction.PREDICTED);
 +                    player.drop(saddle, false, net.minecraft.util.Prediction.SERVER_ONLY); // Nekopur - server-initiated saddle drop
                  }
              }
              return InteractionResult.SUCCESS;
 diff --git a/net/minecraft/world/entity/animal/wolf/Wolf.java b/net/minecraft/world/entity/animal/wolf/Wolf.java
-index 038d5ff74137e7f11437267cf8fe08d68fa0fc5a..37049fbb9fdea5c66c02262940eb7e628e5a5f73 100644
+index 1bd3c48bfe4fdf10cda2d30343ff2d2caa9f652e..98c4a5e754a9778897d5114958514cc82ec808e5 100644
 --- a/net/minecraft/world/entity/animal/wolf/Wolf.java
 +++ b/net/minecraft/world/entity/animal/wolf/Wolf.java
 @@ -684,7 +684,7 @@ public class Wolf extends TamableAnimal implements NeutralMob {
-                 ((ServerLevel) level()).sendParticlesSource(((ServerLevel) level()).players(), null, ParticleTypes.HAPPY_VILLAGER,
+                 ((ServerLevel) level()).sendParticles(ParticleTypes.HAPPY_VILLAGER,
                          false, true,
                          getX() + random.nextFloat(), getY() + (random.nextFloat() * 1.5), getZ() + random.nextFloat(), 1,
 -                        random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0);
@@ -473,37 +383,24 @@ index 038d5ff74137e7f11437267cf8fe08d68fa0fc5a..37049fbb9fdea5c66c02262940eb7e62
              return InteractionResult.SUCCESS_SERVER;
          // Purpur end - Configurable chance for wolves to spawn rabid
 diff --git a/net/minecraft/world/entity/monster/Strider.java b/net/minecraft/world/entity/monster/Strider.java
-index 5ee12cffbe543b7b8c4ea1f68a64d64e829e6518..574abfdee8a3cab8a87257ad5b6bfba9dfef4b5d 100644
+index 7c910f14559f08ca2c73fd224f71e9c80dc95227..574abfdee8a3cab8a87257ad5b6bfba9dfef4b5d 100644
 --- a/net/minecraft/world/entity/monster/Strider.java
 +++ b/net/minecraft/world/entity/monster/Strider.java
 @@ -474,7 +474,7 @@ public class Strider extends Animal implements ItemSteerable {
              if (!player.getAbilities().instabuild) {
                  ItemStack saddle = new ItemStack(Items.SADDLE);
                  if (!player.getInventory().add(saddle)) {
--                    player.drop(saddle, false);
+-                    player.drop(saddle, false, net.minecraft.util.Prediction.PREDICTED);
 +                    player.drop(saddle, false, net.minecraft.util.Prediction.SERVER_ONLY); // Nekopur - server-initiated saddle drop
                  }
              }
              return InteractionResult.SUCCESS;
-diff --git a/net/minecraft/world/entity/monster/cubemob/Slime.java b/net/minecraft/world/entity/monster/cubemob/Slime.java
-index 1faab89a0c6febdbbb15c8f1345fbd8e71f3af6e..f8b250f8b60a4721a4f972f6fdf0d62302623382 100644
---- a/net/minecraft/world/entity/monster/cubemob/Slime.java
-+++ b/net/minecraft/world/entity/monster/cubemob/Slime.java
-@@ -206,7 +206,7 @@ public class Slime extends AbstractCubeMob implements Enemy {
-     }
- 
-     @Override
--    protected void setcubeMobHealth(final int actualSize) {
-+    protected void setCubeMobHealth(final int actualSize) { // Nekopur - match 26.3 superclass hook
-         // Purpur start - Configurable entity base attributes
-         this.getAttribute(Attributes.MAX_HEALTH).setBaseValue(getFromCache(this::getMaxHealthEquation, this::getMaxHealthCache, () -> (double) (actualSize * actualSize)));
-         this.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(getFromCache(this::getAttackDamageEquation, this::getAttackDamageCache, () -> (double) actualSize));
 diff --git a/net/minecraft/world/entity/monster/skeleton/Skeleton.java b/net/minecraft/world/entity/monster/skeleton/Skeleton.java
-index 1bbe07b2395d9832aa03e83c1b734defbf5373db..9f8f6df561a3f031ca9e420bb665554bf383a7cd 100644
+index ecfacfb9d842fa5057501ffa91d3dcddfdd22ba3..9f006efda2864580d71387b7549af6515fb1a992 100644
 --- a/net/minecraft/world/entity/monster/skeleton/Skeleton.java
 +++ b/net/minecraft/world/entity/monster/skeleton/Skeleton.java
 @@ -182,7 +182,7 @@ public class Skeleton extends AbstractSkeleton {
-             ((net.minecraft.server.level.ServerLevel) level()).sendParticlesSource(((net.minecraft.server.level.ServerLevel) level()).players(), null, net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
+             ((net.minecraft.server.level.ServerLevel) level()).sendParticles(net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
                      false, true,
                      getX() + random.nextFloat(), getY() + (random.nextFloat() * 2), getZ() + random.nextFloat(), 1,
 -                    random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, random.nextGaussian() * 0.05D, 0);
@@ -511,19 +408,6 @@ index 1bbe07b2395d9832aa03e83c1b734defbf5373db..9f8f6df561a3f031ca9e420bb665554b
          }
          return net.minecraft.world.InteractionResult.SUCCESS;
      }
-diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java
-index 43770ce13078d35a1472f4e7f17c3e1b9691d668..0c8e893adef79190403c556f9ba83955764d7d19 100644
---- a/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java
-+++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/Snowball.java
-@@ -81,7 +81,7 @@ public class Snowball extends ThrowableItemProjectile {
-             } else if (this.level().purpurConfig.snowballExtinguishesCampfires && net.minecraft.world.level.block.CampfireBlock.isLitCampfire(blockState)) {
-                 if (org.bukkit.craftbukkit.event.CraftEventFactory.callEntityChangeBlockEvent(this, pos, blockState.setValue(net.minecraft.world.level.block.CampfireBlock.LIT, false))) {
-                     this.level().levelEvent(null, 1009, pos, 0);
--                    net.minecraft.world.level.block.CampfireBlock.dowse(this.getOwner(), this.level(), pos, blockState);
-+                    net.minecraft.world.level.block.CampfireBlock.douse(/* Nekopur - 26.3 method name */ this.getOwner(), this.level(), pos, blockState);
-                     this.level().setBlockAndUpdate(pos, blockState.setValue(net.minecraft.world.level.block.CampfireBlock.LIT, false));
-                 }
-             }
 diff --git a/net/minecraft/world/inventory/AbstractFurnaceMenu.java b/net/minecraft/world/inventory/AbstractFurnaceMenu.java
 index 08c00ff5e29ef3fb3d78bc28beed2a64044c28e8..d3161ae2985eec17ffa80eecd9d531643b99e1bb 100644
 --- a/net/minecraft/world/inventory/AbstractFurnaceMenu.java
@@ -537,39 +421,13 @@ index 08c00ff5e29ef3fb3d78bc28beed2a64044c28e8..d3161ae2985eec17ffa80eecd9d53164
      }
  
      public float getBurnProgress() {
-diff --git a/net/minecraft/world/inventory/AnvilMenu.java b/net/minecraft/world/inventory/AnvilMenu.java
-index 8d87baed6e8e6c70db44798b5952218ee625a8c3..e592c6d98e9226e861297ebdc43565c77b99755f 100644
---- a/net/minecraft/world/inventory/AnvilMenu.java
-+++ b/net/minecraft/world/inventory/AnvilMenu.java
-@@ -93,7 +93,7 @@ public class AnvilMenu extends ItemCombinerMenu {
-     protected void onTake(final Player player, final ItemStack carried) {
-         // Purpur start - Anvil API
-         ItemStack itemstack = this.activeQuickItem != null ? this.activeQuickItem : carried;
--        if (org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent.getHandlerList().getRegisteredListeners().length > 0) new org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemstack)).callEvent();
-+        if (org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent.getHandlerList().getRegisteredListeners().length > 0) new org.purpurmc.purpur.event.inventory.AnvilTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemstack) /* Nekopur - 26.3 item bridge */).callEvent();
-         // Purpur end - Anvil API
-         if (!player.hasInfiniteMaterials()) {
-             if (this.bypassCost) ((ServerPlayer) player).lastSentExp = -1; else // Purpur - Anvil API
-diff --git a/net/minecraft/world/inventory/GrindstoneMenu.java b/net/minecraft/world/inventory/GrindstoneMenu.java
-index 6bf8e63e6c4f7b6f037870af79c1ec96c88b5885..a06f263d8d891a133138e90b042bffc79f138909 100644
---- a/net/minecraft/world/inventory/GrindstoneMenu.java
-+++ b/net/minecraft/world/inventory/GrindstoneMenu.java
-@@ -97,7 +97,7 @@ public class GrindstoneMenu extends AbstractContainerMenu {
-                         // Paper start - Fire BlockExpEvent on grindstone use
-                         org.bukkit.event.block.BlockExpEvent event = new org.bukkit.event.block.BlockExpEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), this.getExperienceAmount(level));
-                         event.callEvent();
--                        org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent grindstoneTakeResultEvent = new org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemstack), event.getExpToDrop()); grindstoneTakeResultEvent.callEvent(); // Purpur - Grindstone API
-+                        org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent grindstoneTakeResultEvent = new org.purpurmc.purpur.event.inventory.GrindstoneTakeResultEvent(player.getBukkitEntity(), getBukkitView(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemstack) /* Nekopur - 26.3 item bridge */, event.getExpToDrop()); grindstoneTakeResultEvent.callEvent(); // Purpur - Grindstone API
-                         ExperienceOrb.awardWithDirection(serverLevel, Vec3.atCenterOf(pos), Vec3.ZERO, grindstoneTakeResultEvent.getExperienceAmount(), org.bukkit.entity.ExperienceOrb.SpawnReason.GRINDSTONE, player, null); // Purpur - Grindstone API
-                         // Paper end - Fire BlockExpEvent on grindstone use
-                     }
 diff --git a/net/minecraft/world/item/BlockItem.java b/net/minecraft/world/item/BlockItem.java
-index 19c64097c109bed2f86c976ad377f7635aba9951..39922d4e486fdf4e28955804e49ec4ec63087dce 100644
+index 7fd9347a6a8358487ea0193c4f33745050e57e5f..55b15002486e23deb52b42b3f638fbdd0e11355b 100644
 --- a/net/minecraft/world/item/BlockItem.java
 +++ b/net/minecraft/world/item/BlockItem.java
 @@ -90,6 +90,7 @@ public class BlockItem extends Item {
              try {
-                 updateCustomBlockEntityTag(level, player, pos, itemStack);
+                 this.updateCustomBlockEntityTag(pos, level, player, itemStack, placedState); // Purpur - Silk touch spawners - TODO: redo implementation
                  updateBlockEntityComponents(level, pos, itemStack);
 +                if (this instanceof org.purpurmc.purpur.item.SpawnerItem spawnerItem) spawnerItem.applySpawnerData(pos, level, player, itemStack); // Nekopur - preserve silk-touch spawner data on 26.3
              } catch (Exception ex) {
@@ -599,20 +457,3 @@ index b83834315d123b7f5ada2e90d326879fd63bfd95..3d97d65512ac708703a62f4f0d35932d
      }
  
      @Override
-diff --git a/net/minecraft/world/level/block/entity/SignBlockEntity.java b/net/minecraft/world/level/block/entity/SignBlockEntity.java
-index 34fcb0ead0283f1363438429d2130ee054c775e4..dcfe607be013d342e169961864e47d29a868e7d0 100644
---- a/net/minecraft/world/level/block/entity/SignBlockEntity.java
-+++ b/net/minecraft/world/level/block/entity/SignBlockEntity.java
-@@ -177,10 +177,10 @@ public class SignBlockEntity extends BlockEntity {
- 
-             org.bukkit.entity.Player craftPlayer =  (org.bukkit.craftbukkit.entity.CraftPlayer) player.getBukkitEntity(); // Purpur - Signs allow color codes
-             if (shouldFilter) {
--                result.setLine(i, translateColors(craftPlayer, net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle)); // Paper - filter sign text to chat only // Purpur - Signs allow color codes
-+                result.setLine(i, signBlockEntity.translateColors(craftPlayer, /* Nekopur - 26.3 static sign update */ net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle)); // Paper - filter sign text to chat only // Purpur - Signs allow color codes
-             } else {
-                 result.setLine(
--                    i, translateColors(craftPlayer, net.minecraft.util.StringUtil.filterText(line.raw()), currentTextStyle), translateColors(craftPlayer, net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle) // Paper - filter sign text to chat only // Purpur - Signs allow color codes
-+                    i, signBlockEntity.translateColors(craftPlayer, /* Nekopur - 26.3 static sign update */ net.minecraft.util.StringUtil.filterText(line.raw()), currentTextStyle), signBlockEntity.translateColors(craftPlayer, /* Nekopur - 26.3 static sign update */ net.minecraft.util.StringUtil.filterText(line.filteredOrEmpty()), currentTextStyle) // Paper - filter sign text to chat only // Purpur - Signs allow color codes
-                 );
-             }
-         }

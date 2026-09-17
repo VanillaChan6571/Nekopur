@@ -27,19 +27,6 @@ index 13b05892cc4a09c2c4b4279ec7020f114c2512de..f4bd91b4c97318d744d76cf329238012
      }
      // Purpur end - Added the ability to add combustible items
  
-diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java
-index 94a271eddff445db654db08129c3e92413a662f4..beb7deabf252c436ac08f1a460d2a008ed7a218f 100644
---- a/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java
-+++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftVillager.java
-@@ -247,7 +247,7 @@ public class CraftVillager extends CraftAbstractVillager implements Villager {
-     // Purpur start - Lobotomize stuck villagers
-     @Override
-     public boolean isLobotomized() {
--        return getHandle().isLobotomized();
-+        return false; // Nekopur - upstream 26.3 leaves villager lobotomization unapplied
-     }
-     // Purpur end - Lobotomize stuck villagers
- }
 diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java
 index 45f1191f76810aa406f349c7162f6e85c63042ba..e891c10658d8193c49bc5b45f9b3b2551e162167 100644
 --- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventoryFurnace.java
