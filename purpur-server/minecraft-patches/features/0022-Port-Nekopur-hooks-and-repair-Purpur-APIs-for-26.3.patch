@@ -5,7 +5,7 @@ Subject: [PATCH] Port Nekopur hooks and repair Purpur APIs for 26.3
 
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed627a49d38 100644
+index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621069b5416 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -330,6 +330,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -44,7 +44,7 @@ index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed6
          level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
          this.updateEffectiveRespawnData();
          this.forceTicks = false; // CraftBukkit
-@@ -992,6 +999,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -998,6 +1005,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          }
          if (!this.hasLoggedStop && this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
          this.shutdownThread = Thread.currentThread(); // Paper - Improved watchdog support
@@ -52,7 +52,7 @@ index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed6
          org.spigotmc.WatchdogThread.doStop(); // Paper - Improved watchdog support
          // CraftBukkit end
          this.packetProcessor.close();
-@@ -1268,6 +1276,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1274,6 +1282,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              LOGGER.info("Running delayed init tasks");
              new io.papermc.paper.threadedregions.RegionizedServerInitEvent().callEvent(); // Call Folia init event
              this.server.getScheduler().mainThreadHeartbeat(); // run all 1 tick delay tasks during init,
@@ -60,7 +60,7 @@ index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed6
              // this is going to be the first thing the tick process does anyway, so move done and run it after
              // everything is init before watchdog tick.
              // anything at 3+ won't be caught here but also will trip watchdog....
-@@ -1583,6 +1592,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1589,6 +1598,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          long nano = Util.getNanos();
          int emptyTickThreshold = this.pauseWhenEmptySeconds() * 20;
          this.removeDisabledPluginsBlockingSleep(); // Paper - API to allow/disallow tick sleeping
@@ -74,7 +74,7 @@ index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed6
          if (emptyTickThreshold > 0) {
              if (this.playerList.getPlayerCount() == 0 && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty()) { // Paper - API to allow/disallow tick sleeping
                  this.emptyTicks++;
-@@ -3140,6 +3156,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -3158,6 +3174,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
  
      // Paper start - API to check if the server is sleeping
      public boolean isTickPaused() {
@@ -83,10 +83,10 @@ index 9a77537ea47dc056d0e7f24acc7f2223ec692413..db3d28e1f3747fc4a29093beefd24ed6
      }
  
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index 6f15458487248550ee723aabf7ab12216369ec4d..c38059b132903e335505d248f1be0041b31ec5c7 100644
+index fcaa860b5878730000dd3c6f036f78333f031bbb..94ea09116c7d484040285e1029cb0efba9c8d2f3 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
-@@ -727,6 +727,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+@@ -728,6 +728,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
  
      @Override
      public void tick() {
@@ -98,7 +98,7 @@ index 6f15458487248550ee723aabf7ab12216369ec4d..c38059b132903e335505d248f1be0041
          if (this.joining) {
              this.joining = false;
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 42128d80a4c32fe8dc320282b17f8288310c24a0..2034a2885a7297c33080da822c33da40abba29d1 100644
+index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22fb399253 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -274,6 +274,8 @@ public class ServerGamePacketListenerImpl
@@ -335,7 +335,7 @@ index f6601bc30fa37a309923ea9883b04233f83b2c0b..6c6b362b402baa2199e389e2c985084a
                      player.loadAndSpawnEnderPearls(tag);
                      player.loadAndSpawnParentVehicle(tag);
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 90bb0473f0b7580e7162dbf492a50555c4e4e9bf..fdac8600cc11919f7eeb9a9cdb9f1dcb21d05563 100644
+index a1c22d64d31ca7a2bce9ebba48e4ac1cbce60646..1d47d900b8cb5cc1319aa09e6b5474e9294bfc7a 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -217,7 +217,16 @@ public abstract class PlayerList {
