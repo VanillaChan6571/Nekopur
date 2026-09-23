@@ -5,10 +5,10 @@ Subject: [PATCH] Port Nekopur hooks and repair Purpur APIs for 26.3
 
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621069b5416 100644
+index 57650ce5b5268df9cd48dc7761ce0506ee73c306..0710aadec33e27d3b1bae476b691d954c115d4aa 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
-@@ -330,6 +330,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -331,6 +331,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
      public boolean isIteratingOverLevels = false; // Paper - Throw exception on world create while being ticked
      private final Set<String> pluginsBlockingSleep = new java.util.HashSet<>(); // Paper - API to allow/disallow tick sleeping
      public static final long SERVER_INIT = System.nanoTime(); // Paper - Lag compensation
@@ -16,7 +16,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
      public boolean lagging = false; // Purpur - Lagging threshold
      protected boolean upnp = false; // Purpur - UPnP Port Forwarding
      // Paper start - improve tick loop
-@@ -764,7 +765,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -765,7 +766,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
                          Objects.requireNonNullElse(worldCreator.forcedSpawnPitch(), LevelData.RespawnData.DEFAULT.pitch())
                      ));
                  } else {
@@ -28,7 +28,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
                  }
                  // Paper end - Allow direct setting spawn location
                  levelData.setInitialized(true);
-@@ -884,6 +889,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -885,6 +890,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          // CraftBukkit end
          ChunkLoadCounter chunkLoadCounter = new ChunkLoadCounter();
  
@@ -36,7 +36,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
          if (true) { // CraftBukkit
              chunkLoadCounter.track(level, () -> {
                  TicketStorage savedTickets = level.getDataStorage().get(TicketStorage.TYPE);
-@@ -901,6 +907,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -902,6 +908,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          } while (chunkLoadCounter.pendingChunks() > 0);
  
          level.levelLoadListener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS); // Paper - per world load listener
@@ -44,7 +44,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
          level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
          this.updateEffectiveRespawnData();
          this.forceTicks = false; // CraftBukkit
-@@ -998,6 +1005,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -999,6 +1006,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          }
          if (!this.hasLoggedStop && this.isDebugging()) io.papermc.paper.util.TraceUtil.dumpTraceForThread("Server stopped"); // Paper - Debugging
          this.shutdownThread = Thread.currentThread(); // Paper - Improved watchdog support
@@ -52,7 +52,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
          org.spigotmc.WatchdogThread.doStop(); // Paper - Improved watchdog support
          // CraftBukkit end
          this.packetProcessor.close();
-@@ -1274,6 +1282,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1275,6 +1283,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              LOGGER.info("Running delayed init tasks");
              new io.papermc.paper.threadedregions.RegionizedServerInitEvent().callEvent(); // Call Folia init event
              this.server.getScheduler().mainThreadHeartbeat(); // run all 1 tick delay tasks during init,
@@ -60,7 +60,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
              // this is going to be the first thing the tick process does anyway, so move done and run it after
              // everything is init before watchdog tick.
              // anything at 3+ won't be caught here but also will trip watchdog....
-@@ -1589,6 +1598,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1590,6 +1599,13 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          long nano = Util.getNanos();
          int emptyTickThreshold = this.pauseWhenEmptySeconds() * 20;
          this.removeDisabledPluginsBlockingSleep(); // Paper - API to allow/disallow tick sleeping
@@ -74,7 +74,7 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
          if (emptyTickThreshold > 0) {
              if (this.playerList.getPlayerCount() == 0 && !this.tickRateManager.isSprinting() && this.pluginsBlockingSleep.isEmpty()) { // Paper - API to allow/disallow tick sleeping
                  this.emptyTicks++;
-@@ -3158,6 +3174,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -3160,6 +3176,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
  
      // Paper start - API to check if the server is sleeping
      public boolean isTickPaused() {
@@ -83,10 +83,10 @@ index c4f2ffcea7580c0bee8db8a506a1685e5f32f6a5..6c984a136412aaf295342a651460b621
      }
  
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index fcaa860b5878730000dd3c6f036f78333f031bbb..94ea09116c7d484040285e1029cb0efba9c8d2f3 100644
+index b82a4ce23f81a7ff84ffb8ecafdad72c7c7a1b1d..7559213d0a46e5bcbeedf7d9cfcd44ab4ffbe2af 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
-@@ -728,6 +728,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+@@ -733,6 +733,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
  
      @Override
      public void tick() {
@@ -98,7 +98,7 @@ index fcaa860b5878730000dd3c6f036f78333f031bbb..94ea09116c7d484040285e1029cb0efb
          if (this.joining) {
              this.joining = false;
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22fb399253 100644
+index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e5080875067850 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -274,6 +274,8 @@ public class ServerGamePacketListenerImpl
@@ -110,7 +110,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
      private int ackBlockChangesUpTo = -1;
      private final TickThrottler dropSpamThrottler = new TickThrottler(20, 1480);
      private final TickThrottler chatSpamThrottler;
-@@ -778,6 +780,10 @@ public class ServerGamePacketListenerImpl
+@@ -813,6 +815,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleAcceptTeleportPacket(final ServerboundAcceptTeleportationPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -121,7 +121,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
          if (packet.id() == this.awaitingTeleport) {
              if (this.awaitingPositionFromClient == null || containsInvalidValues(packet.x(), packet.y(), packet.z(), packet.yRot(), packet.xRot())) {
                  ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
-@@ -1481,6 +1487,10 @@ public class ServerGamePacketListenerImpl
+@@ -1516,6 +1522,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -132,7 +132,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
          // Purpur start - Add more logger output for invalid movement kicks
          boolean invalidX = Double.isNaN(packet.getX(0.0));
          boolean invalidY = Double.isNaN(packet.getY(0.0));
-@@ -1574,6 +1584,20 @@ public class ServerGamePacketListenerImpl
+@@ -1609,6 +1619,20 @@ public class ServerGamePacketListenerImpl
                  }
              } else {
                  boolean isFallFlying = this.player.isFallFlying();
@@ -153,7 +153,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
                  ServerLevel level = this.player.level();
                  if (level.tickRateManager().runsNormally()) {
                      this.receivedMovePacketCount++;
-@@ -1613,7 +1637,7 @@ public class ServerGamePacketListenerImpl
+@@ -1648,7 +1672,7 @@ public class ServerGamePacketListenerImpl
                      }
                      // Paper end - Prevent moving into unloaded chunks
  
@@ -162,7 +162,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
                          float metersPerTick = isFallFlying ? 300.0F : 100.0F;
                          if (movedDist - expectedDist > Math.max(metersPerTick, Mth.square(org.spigotmc.SpigotConfig.movedTooQuicklyMultiplier * (float) deltaPackets * speed))) { // CraftBukkit - moved to quickly multiplier
                              // Paper start - Add fail move event
-@@ -1675,7 +1699,26 @@ public class ServerGamePacketListenerImpl
+@@ -1711,7 +1735,26 @@ public class ServerGamePacketListenerImpl
                  zDist = targetZ - this.player.getZ();
                  movedDist = xDist * xDist + yDist * yDist + zDist * zDist;
                  boolean movedWrongly = false; // Paper - Add fail move event; rename
@@ -190,7 +190,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
                      && movedDist > org.spigotmc.SpigotConfig.movedWronglyThreshold // Spigot
                      && !this.player.isSleeping()
                      && !this.player.isCreative()
-@@ -1817,6 +1860,15 @@ public class ServerGamePacketListenerImpl
+@@ -1863,6 +1906,15 @@ public class ServerGamePacketListenerImpl
      // Purpur end - Dont run with scissors!
  
      private boolean shouldCheckPlayerMovement(final boolean isFallFlying) {
@@ -206,7 +206,7 @@ index 15e0dfa179ba5e9d9c59cd98fb5414dbbcfe7b58..d442559b469bbadf18e372bc82328e22
          if (this.isSingleplayerOwner()) {
              return false;
          }
-@@ -2821,6 +2873,15 @@ public class ServerGamePacketListenerImpl
+@@ -2900,6 +2952,15 @@ public class ServerGamePacketListenerImpl
              return;
          }
          // CraftBukkit end
@@ -335,7 +335,7 @@ index f6601bc30fa37a309923ea9883b04233f83b2c0b..6c6b362b402baa2199e389e2c985084a
                      player.loadAndSpawnEnderPearls(tag);
                      player.loadAndSpawnParentVehicle(tag);
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index a1c22d64d31ca7a2bce9ebba48e4ac1cbce60646..1d47d900b8cb5cc1319aa09e6b5474e9294bfc7a 100644
+index d92b8d178d881945889c301f4089f8992f11c781..2f711d0cecf471db6e5a050e428cfb45f430f838 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -217,7 +217,16 @@ public abstract class PlayerList {

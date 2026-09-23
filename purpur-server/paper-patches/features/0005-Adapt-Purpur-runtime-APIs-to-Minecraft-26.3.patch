@@ -41,10 +41,10 @@ index 45f1191f76810aa406f349c7162f6e85c63042ba..e891c10658d8193c49bc5b45f9b3b255
  
      @Override
 diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java
-index 4971fce895035c71e35e062c77ce92dd2b455bd6..e08c500215fc8bcee138ba0ccc9da3ac0adf2a56 100644
+index f7fe1fb4c7a4c294f9f6dcfc944d67d3fa2df9dc..bc04b0ef02f9c7d0336b31451320a31765355ee5 100644
 --- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java
 +++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemType.java
-@@ -171,11 +171,13 @@ public class CraftItemType<M extends ItemMeta> extends HolderableBase<Item> impl
+@@ -173,11 +173,13 @@ public class CraftItemType<M extends ItemMeta> extends HolderableBase<Item> impl
  
      @Override
      public boolean isFuel() {
@@ -56,6 +56,6 @@ index 4971fce895035c71e35e062c77ce92dd2b455bd6..e08c500215fc8bcee138ba0ccc9da3ac
      public int getBurnDuration() {
 +        Integer override = org.nekopur.compat.FuelOverrides.burnTime(new net.minecraft.world.item.ItemStack(this.getHandle())); // Nekopur - runtime fuel overrides
 +        if (override != null) return override; // Nekopur - avoid loot context lookup for an explicit override
-         if (!this.isFuel()) {
+         CookingFuel cookingFuel = this.getHandle().components().get(DataComponents.COOKING_FUEL);
+         if (cookingFuel == null) {
              return 0;
-         }
