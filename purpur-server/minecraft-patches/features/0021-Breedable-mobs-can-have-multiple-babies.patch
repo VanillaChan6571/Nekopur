@@ -5,12 +5,12 @@ Subject: [PATCH] Breedable mobs can have multiple babies
 
 
 diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
-index f51b388a8b01b85a243e1c8572e575e0b2fa5472..0444888e2262868697e6b033cf4dd453fc03625f 100644
+index be476653914c3fd7100344840ec06e8963c6e5b7..aca1172920b7d0b52ca3ddf4c7fd419ea6b8299b 100644
 --- a/net/minecraft/world/entity/Mob.java
 +++ b/net/minecraft/world/entity/Mob.java
-@@ -156,6 +156,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
-     private int homeRadius = -1;
+@@ -157,6 +157,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
      public boolean aware = true; // CraftBukkit
+     public net.kyori.adventure.util.TriState despawnInPeacefulOverride = net.kyori.adventure.util.TriState.NOT_SET; // Paper - allow changing despawnInPeaceful
      public int ticksSinceLastInteraction; // Purpur - Entity lifespan
 +    protected boolean willHaveAnotherBaby() { return false; } protected int getBreedingMinOffspring() { return 1; } protected int getBreedingMaxOffspring() { return 1; } // Purpur - Breedable mobs can have multiple babies
  
@@ -713,7 +713,7 @@ index d4ca6f9f53e94e925cadd65e702f0b35f361f6a2..1f242320d34a4679b96022be1c72a7c0
      public void setTimeInOverworld(final int timeInOverworld) {
          this.timeInOverworld = timeInOverworld;
 diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
-index 409c4515f9cf7a8c895f26ec1443da628580b877..6d5bcdafc0f1b69824fecfba9f9391cb920a9f90 100644
+index 9da5b8f1e6e3f37ffcbf5d76013e0e16c654f8e5..b7d5037ebfd306f37f689df161406a72645d1e9a 100644
 --- a/net/minecraft/world/entity/npc/villager/Villager.java
 +++ b/net/minecraft/world/entity/npc/villager/Villager.java
 @@ -293,6 +293,23 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re

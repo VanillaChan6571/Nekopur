@@ -21,7 +21,7 @@ public class CraftBeehive extends CraftBlockEntityState<BeehiveBlockEntity> impl
     public CraftBeehive(World world, BeehiveBlockEntity blockEntity) {
         super(world, blockEntity);
         // Purpur start - load bees to be able to modify them individually - Stored Bee API
-        for (BeehiveBlockEntity.BeeData data : blockEntity.getStored()) {
+        for(BeehiveBlockEntity.BeeData data : blockEntity.getStored()) {
             storage.add(new org.purpurmc.purpur.entity.PurpurStoredBee(data, this, blockEntity));
         }
         // Purpur end - Stored Bee API
@@ -40,7 +40,7 @@ public class CraftBeehive extends CraftBlockEntityState<BeehiveBlockEntity> impl
     @Override
     public void setFlower(Location location) {
         Preconditions.checkArgument(location == null || this.getWorld().equals(location.getWorld()), "Flower must be in same world");
-        this.getSnapshot().savedFlowerPos = (location == null) ? null : CraftLocation.toBlockPosition(location);
+        this.getSnapshot().savedFlowerPos = (location == null) ? null : CraftLocation.toBlockPos(location);
     }
 
     @Override
@@ -92,11 +92,11 @@ public class CraftBeehive extends CraftBlockEntityState<BeehiveBlockEntity> impl
     public Bee releaseEntity(org.purpurmc.purpur.entity.StoredEntity<Bee> entity) {
         ensureNoWorldGeneration();
 
-        if (!getEntities().contains(entity)) {
+        if(!getEntities().contains(entity)) {
             return null;
         }
 
-        if (isPlaced()) {
+        if(isPlaced()) {
             BeehiveBlockEntity beehive = ((BeehiveBlockEntity) this.getBlockEntityFromWorld());
             BeehiveBlockEntity.BeeData data = ((org.purpurmc.purpur.entity.PurpurStoredBee) entity).getHandle();
 
@@ -127,7 +127,7 @@ public class CraftBeehive extends CraftBlockEntityState<BeehiveBlockEntity> impl
 
         // Purpur start - check if new bee was added, and if yes, add to stored bees - Stored Bee API
         List<BeehiveBlockEntity.BeeData> storedBeeData = this.getSnapshot().getStored();
-        if (length < storedBeeData.size()) {
+        if(length < storedBeeData.size()) {
             storage.add(new org.purpurmc.purpur.entity.PurpurStoredBee(storedBeeData.getLast(), this, this.getBlockEntity()));
         }
         // Purpur end - Stored Bee API

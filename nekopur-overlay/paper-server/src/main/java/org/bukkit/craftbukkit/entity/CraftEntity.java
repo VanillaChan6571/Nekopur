@@ -7,13 +7,17 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.mojang.logging.LogUtils;
 import io.papermc.paper.datacomponent.DataComponentType;
+import io.papermc.paper.datacomponent.PaperDataComponentType;
 import io.papermc.paper.entity.LookAnchor;
+import io.papermc.paper.entity.RemovalReason;
 import io.papermc.paper.entity.TeleportFlag;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import io.papermc.paper.math.Angle;
 import net.kyori.adventure.pointer.PointersSupplier;
 import net.kyori.adventure.util.TriState;
 import net.md_5.bungee.api.chat.BaseComponent;
@@ -31,9 +35,9 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityProcessor;
 import net.minecraft.world.entity.EntitySpawnReason;
-import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.EntitySpawnRequest;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.level.storage.ValueInput;
@@ -44,6 +48,7 @@ import org.bukkit.EntityEffect;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.PistonMoveReaction;
@@ -51,6 +56,7 @@ import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.CraftSound;
 import org.bukkit.craftbukkit.CraftWorld;
 import org.bukkit.craftbukkit.block.CraftBlock;
+import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
 import org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry;
 import org.bukkit.craftbukkit.util.CraftChatMessage;
@@ -126,37 +132,10 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
     }
     // Purpur end - Fire Immunity API
 
-    // Purpur start - Ridables
-    @Override
-    public boolean isRidable() {
-        return getHandle().isRidable();
-    }
-
-    @Override
-    public boolean isRidableInWater() {
-        return getHandle().isRidable() && !getHandle().dismountsUnderwater();
-    }
-    // Purpur end - Ridables
-
-    @Override
-    public boolean hasRider() {
-        return getHandle().getRider() != null;
-    }
-
-    @Override
-    public org.bukkit.entity.Player getRider() {
-        net.minecraft.world.entity.player.Player rider = getHandle().getRider();
-        return rider == null ? null : (org.bukkit.entity.Player) rider.getBukkitEntity();
-    }
-
     // Purpur start - API for any mob to burn daylight
     @Override
     public boolean isInDaylight() {
-        if (!getHandle().level().isBrightOutside()) {
-            return false;
-        }
-        net.minecraft.core.BlockPos pos = getHandle().blockPosition();
-        return getHandle().level().canSeeSky(pos);
+        return getHandle().isSunBurnTick();
     }
     // Purpur end - API for any mob to burn daylight
 
@@ -252,7 +231,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
         }
         // Paper end
         this.entity.setDeltaMovement(CraftVector.toVec3(velocity));
-        this.entity.hurtMarked = true;
+        this.entity.syncVelocity = true;
     }
 
     /**
@@ -296,9 +275,6 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     @Override
     public boolean isOnGround() {
-        if (this.entity instanceof AbstractArrow abstractArrow) {
-            return abstractArrow.isInGround();
-        }
         return this.entity.onGround();
     }
 
@@ -321,6 +297,14 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
         pitch = Location.normalizePitch(pitch);
 
         this.getHandle().forceSetRotation(yaw, false, pitch, false);
+    }
+
+    @Override
+    public void setRotation(Angle yaw, Angle pitch) {
+        float yawValue = Location.normalizeYaw(yaw.degrees());
+        float pitchValue = Location.normalizePitch(pitch.degrees());
+
+        this.getHandle().forceSetRotation(yawValue, yaw.relative(), pitchValue, pitch.relative());
     }
 
     @Override
@@ -362,9 +346,12 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
             Vec3.ZERO,
             location.getYaw(),
             location.getPitch(),
+            false,
+            false,
             relativeFlags,
             TeleportTransition.DO_NOTHING,
-            cause
+            cause,
+            TeleportTransition.PassengerTeleportationMode.POSITION_RIDER
         )) != null;
     }
 
@@ -511,6 +498,17 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
     }
 
     @Override
+    public @Nullable EntityRemoveEvent.Cause getRemoveEventCause() {
+        return this.entity.removeEventCause;
+    }
+
+    @Override
+    public @Nullable RemovalReason getRemovalReason() {
+        final Entity.RemovalReason removalReason = this.entity.getRemovalReason();
+        return removalReason == null ? null : RemovalReason.valueOf(removalReason.name());
+    }
+
+    @Override
     public boolean isDead() {
         return !this.entity.isAlive();
     }
@@ -590,7 +588,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
     @Override
     public ItemStack getPickItemStack() {
         net.minecraft.world.item.ItemStack stack = this.getHandle().getPickResult();
-        return stack == null ? ItemStack.empty() : stack.asBukkitCopy();
+        return stack == null ? ItemStack.empty() : CraftItemStack.asBukkitCopy(stack);
     }
 
     @Override
@@ -642,6 +640,16 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
         Preconditions.checkArgument(effect.isApplicableTo(this), "Entity effect cannot apply to this entity");
 
         this.getHandle().level().broadcastEntityEvent(this.getHandle(), effect.getData());
+    }
+
+    @Override
+    public SoundCategory getSoundCategory() {
+        return SoundCategory.valueOf(this.getHandle().getSoundSource().name());
+    }
+
+    @Override
+    public net.kyori.adventure.sound.Sound.Source soundSource() {
+        return this.getSoundCategory().soundSource();
     }
 
     @Override
@@ -915,7 +923,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     @Override
     public void setInvulnerable(boolean flag) {
-        this.getHandle().setInvulnerable(flag);
+        this.getHandle().setPermanentlyInvulnerable(flag);
     }
 
     @Override
@@ -955,7 +963,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     @Override
     public Set<String> getScoreboardTags() {
-        return this.getHandle().getTags();
+        return this.getHandle().entityTags();
     }
 
     @Override
@@ -1075,7 +1083,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
             final TagValueOutput output = TagValueOutput.createWithContext(problemReporter, level.registryAccess());
             this.getHandle().saveAsPassenger(output, false, true, true);
 
-            return net.minecraft.world.entity.EntityType.loadEntityRecursive(output.buildResult(), level, EntitySpawnReason.LOAD, EntityProcessor.NOP);
+            return net.minecraft.world.entity.EntityType.loadEntityRecursive(output.buildResult(), level, new EntitySpawnRequest(EntitySpawnReason.LOAD, false), EntityProcessor.NOP);
         }
     }
 
@@ -1362,19 +1370,42 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
             ((CraftPlayer) player).sendHurtAnimation(0, this);
         }
     }
+
     @Override
     public <T> @Nullable T getData(@NotNull final DataComponentType.Valued<T> type) {
-        return this.entity.get(io.papermc.paper.datacomponent.PaperDataComponentType.bukkitToMinecraft(type));
+        return PaperDataComponentType.convertDataComponentValue(this.getHandleRaw(), (PaperDataComponentType.ValuedImpl<T, ?>) type);
     }
 
     @Override
     public <T> @Nullable T getDataOrDefault(@NotNull final DataComponentType.Valued<? extends T> type, @Nullable final T fallback) {
-        return this.entity.getOrDefault(io.papermc.paper.datacomponent.PaperDataComponentType.bukkitToMinecraft(type), fallback);
+        return Objects.requireNonNullElse(this.getData(type), fallback);
     }
 
     @Override
     public boolean hasData(final @NotNull DataComponentType type) {
-        return this.entity.get(io.papermc.paper.datacomponent.PaperDataComponentType.bukkitToMinecraft(type)) != null;
+        return this.getHandleRaw().get(PaperDataComponentType.bukkitToMinecraft(type)) != null;
     }
 
+    // Purpur start - Ridables
+    @Override
+    public org.bukkit.entity.Player getRider() {
+        net.minecraft.world.entity.player.Player rider = getHandle().getRider();
+        return rider != null ? (org.bukkit.entity.Player) rider.getBukkitEntity() : null;
+    }
+
+    @Override
+    public boolean hasRider() {
+        return getHandle().getRider() != null;
+    }
+
+    @Override
+    public boolean isRidable() {
+        return getHandle().isRidable();
+    }
+
+    @Override
+    public boolean isRidableInWater() {
+        return !getHandle().dismountsUnderwater();
+    }
+    // Purpur end - Ridables
 }

@@ -46,11 +46,10 @@ public class CraftMapRenderer extends MapRenderer {
         }
     }
 
-    // Purpur start - Explorer map API
+    // Purpur start - Explorer Map API
     @Override
     public boolean isExplorerMap() {
         return this.worldMap.isExplorerMap;
     }
-    // Purpur end - Explorer map API
-
+    // Purpur end - Explorer Map API
 }

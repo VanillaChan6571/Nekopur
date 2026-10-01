@@ -42,7 +42,7 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
     protected CraftOfflinePlayer(CraftServer server, NameAndId nameAndId) {
         this.server = server;
         this.nameAndId = nameAndId;
-        this.storage = server.console.playerDataStorage;
+        this.storage = server.console.getPlayerList().playerIo;
     }
 
     @Override
@@ -342,6 +342,12 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
 
     @Override
     public Location getLocation() {
+        // Purpur start - OfflinePlayer API
+        if (this.isOnline()) {
+            return this.getPlayer().getLocation();
+        }
+        // Purpur end - OfflinePlayer API
+
         CompoundTag data = this.getData();
         if (data == null) {
             return null;
@@ -610,7 +616,7 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
     @Override
     public boolean isFlying() {
         if (this.isOnline()) {
-            return this.getPlayer().isFlying();
+            return this.isFlying();
         } else {
             CompoundTag data = this.getData();
             if (data == null) return false;
@@ -627,22 +633,7 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
             CompoundTag data = this.getData();
             if (data == null) return;
             if (!(data.get("abilities") instanceof CompoundTag abilities)) return;
-            abilities.putByte("flying", (byte) (value ? 1 : 0));
-            data.put("abilities", abilities);
-            save(data);
-        }
-    }
-
-    @Override
-    public void setWalkSpeed(float value) throws IllegalArgumentException {
-        if (value < -1f || value > 1f) throw new IllegalArgumentException("WalkSpeed needs to be between -1 and 1");
-        if (this.isOnline()) {
-            this.getPlayer().setWalkSpeed(value);
-        } else {
-            CompoundTag data = this.getData();
-            if (data == null) return;
-            if (!(data.get("abilities") instanceof CompoundTag abilities)) return;
-            abilities.putFloat("walkSpeed", value);
+            abilities.putByte("mayfly", (byte) (value ? 1 : 0));
             data.put("abilities", abilities);
             save(data);
         }
@@ -664,18 +655,6 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
     }
 
     @Override
-    public float getWalkSpeed() {
-        if (this.isOnline()) {
-            return this.getPlayer().getWalkSpeed();
-        } else {
-            CompoundTag data = this.getData();
-            if (data == null) return 0;
-            if (!(data.get("abilities") instanceof CompoundTag abilities)) return 0;
-            return abilities.getFloatOr("walkSpeed", 0);
-        }
-    }
-
-    @Override
     public float getFlySpeed() {
         if (this.isOnline()) {
             return this.getPlayer().getFlySpeed();
@@ -684,6 +663,33 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
             if (data == null) return 0;
             if (!(data.get("abilities") instanceof CompoundTag abilities)) return 0;
             return abilities.getFloatOr("flySpeed", 0);
+        }
+    }
+
+    @Override
+    public void setWalkSpeed(float value) throws IllegalArgumentException {
+        if (value < -1f || value > 1f) throw new IllegalArgumentException("WalkSpeed needs to be between -1 and 1");
+        if (this.isOnline()) {
+            this.getPlayer().setWalkSpeed(value);
+        } else {
+            CompoundTag data = this.getData();
+            if (data == null) return;
+            if (!(data.get("abilities") instanceof CompoundTag abilities)) return;
+            abilities.putFloat("walkSpeed", value);
+            data.put("abilities", abilities);
+            save(data);
+        }
+    }
+
+    @Override
+    public float getWalkSpeed() {
+        if (this.isOnline()) {
+            return this.getPlayer().getWalkSpeed();
+        } else {
+            CompoundTag data = this.getData();
+            if (data == null) return 0;
+            if (!(data.get("abilities") instanceof CompoundTag abilities)) return 0;
+            return abilities.getFloatOr("walkSpeed", 0);
         }
     }
 

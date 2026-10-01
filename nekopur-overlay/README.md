@@ -12,6 +12,14 @@ overlay copied into the upstream sources during the build, and told readers not 
 The files under `paper-server/` here are kept because they are real edits someone made, but they
 are **not** part of a build. Do not assume a change placed here takes effect.
 
+## Snapshot revision
+
+The 23 Java snapshots were refreshed from the fully patched 26.3 server tree, based on
+Purpur `0b28be28ee15b894733bd6a73a644f9db59ff9c3` and Paper
+`0fdc08858f78b03c1df8033fedf90117e8c7d5a9`. They include this branch's existing
+compatibility patches and remain reference snapshots; the build uses the tracked
+patches and Nekopur sources.
+
 ## Where Nekopur changes actually go
 
 Run `./gradlew nekopurWhere`, which prints the current layout and what remains unresolved.

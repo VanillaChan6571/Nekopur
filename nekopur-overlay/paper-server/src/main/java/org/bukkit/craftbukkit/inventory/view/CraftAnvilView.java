@@ -60,30 +60,6 @@ public class CraftAnvilView extends CraftInventoryView<AnvilMenu, AnvilInventory
         this.container.bypassEnchantmentLevelRestriction = bypassEnchantmentLevelRestriction;
     }
 
-    // Purpur start - Config to allow unsafe enchants
-    @Override
-    public boolean canBypassCost() {
-        return this.container.bypassEnchantmentLevelRestriction;
-    }
-
-    @Override
-    public void setBypassCost(boolean bypassCost) {
-        this.container.bypassEnchantmentLevelRestriction = bypassCost;
-    }
-    // Purpur end - Config to allow unsafe enchants
-
-    // Purpur start - Config to allow unsafe enchants
-    @Override
-    public void setDoUnsafeEnchants(boolean canDoUnsafeEnchants) {
-        this.container.canDoUnsafeEnchants = canDoUnsafeEnchants;
-    }
-    // Purpur end - Config to allow unsafe enchants
-
-    @Override
-    public boolean canDoUnsafeEnchants() {
-        return this.container.canDoUnsafeEnchants;
-    }
-
     public void updateFromLegacy(CraftInventoryAnvil legacy) {
         if (legacy.isRepairCostSet()) {
             this.setRepairCost(legacy.getRepairCost());
@@ -97,4 +73,26 @@ public class CraftAnvilView extends CraftInventoryView<AnvilMenu, AnvilInventory
             this.setMaximumRepairCost(legacy.getMaximumRepairCost());
         }
     }
+
+    // Purpur start - Anvil API
+    @Override
+    public boolean canBypassCost() {
+        return this.container.bypassCost;
+    }
+
+    @Override
+    public void setBypassCost(boolean bypassCost) {
+        this.container.bypassCost = bypassCost;
+    }
+
+    @Override
+    public boolean canDoUnsafeEnchants() {
+        return this.container.canDoUnsafeEnchants;
+    }
+
+    @Override
+    public void setDoUnsafeEnchants(boolean canDoUnsafeEnchants) {
+        this.container.canDoUnsafeEnchants = canDoUnsafeEnchants;
+    }
+    // Purpur end - Anvil API
 }

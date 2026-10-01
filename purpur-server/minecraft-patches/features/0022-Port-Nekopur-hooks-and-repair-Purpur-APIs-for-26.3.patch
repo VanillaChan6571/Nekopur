@@ -83,7 +83,7 @@ index 57650ce5b5268df9cd48dc7761ce0506ee73c306..0710aadec33e27d3b1bae476b691d954
      }
  
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index b82a4ce23f81a7ff84ffb8ecafdad72c7c7a1b1d..7559213d0a46e5bcbeedf7d9cfcd44ab4ffbe2af 100644
+index dc29ccc1e642f58317714807e1ac2d53e6ed2f19..fbb4391aac3b0b9ee0915f284a014c9ffe4e0b10 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
 @@ -733,6 +733,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
@@ -98,7 +98,7 @@ index b82a4ce23f81a7ff84ffb8ecafdad72c7c7a1b1d..7559213d0a46e5bcbeedf7d9cfcd44ab
          if (this.joining) {
              this.joining = false;
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e5080875067850 100644
+index 0fcb2e422bfa23fcc9e8cf33658f7abc5a53cfd0..950eb0cdce51988a892071fca275fddf2ff8a1aa 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -274,6 +274,8 @@ public class ServerGamePacketListenerImpl
@@ -121,7 +121,7 @@ index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e50808
          if (packet.id() == this.awaitingTeleport) {
              if (this.awaitingPositionFromClient == null || containsInvalidValues(packet.x(), packet.y(), packet.z(), packet.yRot(), packet.xRot())) {
                  ServerGamePacketListenerImpl.LOGGER.warn("Disconnected on accept teleport packet. Was not expecting position data from client at this time"); // Purpur - Add more logger output for invalid movement kicks
-@@ -1516,6 +1522,10 @@ public class ServerGamePacketListenerImpl
+@@ -1522,6 +1528,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -132,7 +132,7 @@ index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e50808
          // Purpur start - Add more logger output for invalid movement kicks
          boolean invalidX = Double.isNaN(packet.getX(0.0));
          boolean invalidY = Double.isNaN(packet.getY(0.0));
-@@ -1609,6 +1619,20 @@ public class ServerGamePacketListenerImpl
+@@ -1615,6 +1625,20 @@ public class ServerGamePacketListenerImpl
                  }
              } else {
                  boolean isFallFlying = this.player.isFallFlying();
@@ -153,7 +153,7 @@ index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e50808
                  ServerLevel level = this.player.level();
                  if (level.tickRateManager().runsNormally()) {
                      this.receivedMovePacketCount++;
-@@ -1648,7 +1672,7 @@ public class ServerGamePacketListenerImpl
+@@ -1654,7 +1678,7 @@ public class ServerGamePacketListenerImpl
                      }
                      // Paper end - Prevent moving into unloaded chunks
  
@@ -162,7 +162,7 @@ index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e50808
                          float metersPerTick = isFallFlying ? 300.0F : 100.0F;
                          if (movedDist - expectedDist > Math.max(metersPerTick, Mth.square(org.spigotmc.SpigotConfig.movedTooQuicklyMultiplier * (float) deltaPackets * speed))) { // CraftBukkit - moved to quickly multiplier
                              // Paper start - Add fail move event
-@@ -1711,7 +1735,26 @@ public class ServerGamePacketListenerImpl
+@@ -1717,7 +1741,26 @@ public class ServerGamePacketListenerImpl
                  zDist = targetZ - this.player.getZ();
                  movedDist = xDist * xDist + yDist * yDist + zDist * zDist;
                  boolean movedWrongly = false; // Paper - Add fail move event; rename
@@ -190,7 +190,7 @@ index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e50808
                      && movedDist > org.spigotmc.SpigotConfig.movedWronglyThreshold // Spigot
                      && !this.player.isSleeping()
                      && !this.player.isCreative()
-@@ -1863,6 +1906,15 @@ public class ServerGamePacketListenerImpl
+@@ -1869,6 +1912,15 @@ public class ServerGamePacketListenerImpl
      // Purpur end - Dont run with scissors!
  
      private boolean shouldCheckPlayerMovement(final boolean isFallFlying) {
@@ -206,7 +206,7 @@ index 42d15ac5f37f19f82ae491876aeb47e35d21dcfb..7531482557a9204f9f83c52f54e50808
          if (this.isSingleplayerOwner()) {
              return false;
          }
-@@ -2900,6 +2952,15 @@ public class ServerGamePacketListenerImpl
+@@ -2906,6 +2958,15 @@ public class ServerGamePacketListenerImpl
              return;
          }
          // CraftBukkit end
@@ -335,7 +335,7 @@ index f6601bc30fa37a309923ea9883b04233f83b2c0b..6c6b362b402baa2199e389e2c985084a
                      player.loadAndSpawnEnderPearls(tag);
                      player.loadAndSpawnParentVehicle(tag);
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index d92b8d178d881945889c301f4089f8992f11c781..2f711d0cecf471db6e5a050e428cfb45f430f838 100644
+index 1fb016f472528cf56c4c43a9c32c175cf22783cd..eed6f72eaa758829673a81dd5d78c9d21a0be105 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -217,7 +217,16 @@ public abstract class PlayerList {

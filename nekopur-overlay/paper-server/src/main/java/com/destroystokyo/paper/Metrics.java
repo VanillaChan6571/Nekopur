@@ -593,7 +593,7 @@ public class Metrics {
             boolean logFailedRequests = config.getBoolean("logFailedRequests", false);
             // Only start Metrics, if it's enabled in the config
             if (config.getBoolean("enabled", true)) {
-                Metrics metrics = new Metrics("Nekopur", serverUUID, logFailedRequests, Bukkit.getLogger());
+                Metrics metrics = new Metrics("Nekopur", serverUUID, logFailedRequests, Bukkit.getLogger()); // Nekopur - Nekopur config files
 
                 metrics.addCustomChart(new Metrics.SimplePie("minecraft_version", () -> {
                     String minecraftVersion = Bukkit.getVersion();
@@ -602,16 +602,8 @@ public class Metrics {
                 }));
 
                 metrics.addCustomChart(new Metrics.SingleLineChart("players", () -> Bukkit.getOnlinePlayers().size()));
-                metrics.addCustomChart(new Metrics.SimplePie("online_mode", () -> Bukkit.getOnlineMode() ? "online" : "offline"));
-                final String nekopurVersion;
-                final String implVersion = org.bukkit.craftbukkit.Main.class.getPackage().getImplementationVersion();
-                if (implVersion != null) {
-                    final String buildOrHash = implVersion.substring(implVersion.lastIndexOf('-') + 1);
-                    nekopurVersion = "git-Nekopur-%s-%s".formatted(Bukkit.getServer().getMinecraftVersion(), buildOrHash);
-                } else {
-                    nekopurVersion = "unknown";
-                }
-                metrics.addCustomChart(new Metrics.SimplePie("nekopur_version", () -> nekopurVersion));
+                metrics.addCustomChart(new Metrics.SimplePie("online_mode", () -> Bukkit.getOnlineMode() ? "online" : (io.papermc.paper.configuration.GlobalConfiguration.get().proxies.isProxyOnlineMode() ? "bungee" : "offline"))); // Nekopur - Nekopur config files
+                metrics.addCustomChart(new Metrics.SimplePie("nekopur_version", () -> (org.bukkit.craftbukkit.Main.class.getPackage().getImplementationVersion() != null) ? org.bukkit.craftbukkit.Main.class.getPackage().getImplementationVersion() : "unknown")); // Nekopur - Nekopur config files
 
                 metrics.addCustomChart(new Metrics.DrilldownPie("java_version", () -> {
                     Map<String, Map<String, Integer>> map = new HashMap<>();
