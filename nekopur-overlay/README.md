@@ -15,8 +15,8 @@ are **not** part of a build. Do not assume a change placed here takes effect.
 ## Snapshot revision
 
 The 23 Java snapshots were refreshed from the fully patched 26.3 server tree, based on
-Purpur `ad20ae97e9d047a8b042248cb18e42606c427c36` and Paper
-`ff3655a7842b8830c0bedd5ef4e35522aa9a1914`. They include this branch's existing
+Purpur `b5fae12bb284641de92dccbdd8b001ccca8ed9c3` and Paper
+`09ee222482646f8ed84413aea89d0108653af938`. They include this branch's existing
 compatibility patches and remain reference snapshots; the build uses the tracked
 patches and Nekopur sources.
 
