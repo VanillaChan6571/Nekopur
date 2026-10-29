@@ -1,0 +1,19 @@
+--- a/net/minecraft/world/level/levelgen/heightproviders/UniformHeight.java
++++ b/net/minecraft/world/level/levelgen/heightproviders/UniformHeight.java
+@@ -33,6 +_,16 @@
+         return new UniformHeight(minInclusive, maxInclusive);
+     }
+ 
++    // Nekopur start - inspect exact vanilla underground height providers
++    public VerticalAnchor getMinInclusive() {
++        return this.minInclusive;
++    }
++
++    public VerticalAnchor getMaxInclusive() {
++        return this.maxInclusive;
++    }
++    // Nekopur end
++
+     @Override
+     public int sample(final RandomSource random, final WorldGenerationContext context) {
+         int min = this.minInclusive.resolveY(context);

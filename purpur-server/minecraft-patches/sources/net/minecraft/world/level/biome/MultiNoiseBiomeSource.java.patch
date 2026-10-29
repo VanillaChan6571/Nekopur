@@ -1,0 +1,11 @@
+--- a/net/minecraft/world/level/biome/MultiNoiseBiomeSource.java
++++ b/net/minecraft/world/level/biome/MultiNoiseBiomeSource.java
+@@ -38,7 +_,7 @@
+         return new MultiNoiseBiomeSource(Either.right(preset));
+     }
+ 
+-    private Climate.ParameterList<Holder<Biome>> parameters() {
++    public Climate.ParameterList<Holder<Biome>> parameters() { // Nekopur - allow native biome sources to isolate climate search caches
+         return this.parameters.map(direct -> direct, preset -> preset.value().parameters());
+     }
+ 

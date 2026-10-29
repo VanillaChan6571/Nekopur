@@ -1,0 +1,16 @@
+--- a/net/minecraft/core/MappedRegistry.java
++++ b/net/minecraft/core/MappedRegistry.java
+@@ -294,6 +_,13 @@
+         return Objects.requireNonNull(this.componentLookup, "Registry not frozen yet");
+     }
+ 
++    // Nekopur start - bind existing references for native graph construction without freezing registries
++    public void bindValuesForNativeBootstrap() {
++        this.validateWrite();
++        this.byValue.forEach((value, holder) -> holder.bindValue(value));
++    }
++    // Nekopur end
++
+     @Override
+     public Registry<T> freeze() {
+         if (this.frozen) {

@@ -1,0 +1,35 @@
+--- a/net/minecraft/world/level/levelgen/structure/structures/OceanMonumentStructure.java
++++ b/net/minecraft/world/level/levelgen/structure/structures/OceanMonumentStructure.java
+@@ -40,15 +_,20 @@
+         return onTopOfChunkCenter(context, Heightmap.Types.OCEAN_FLOOR_WG, builder -> generatePieces(builder, context));
+     }
+ 
+-    private static StructurePiece createTopPiece(final ChunkPos chunkPos, final WorldgenRandom random) {
++    private static StructurePiece createTopPiece(final ChunkPos chunkPos, final WorldgenRandom random, final int baseY) { // Nekopur - seabed placement
+         int west = chunkPos.getMinBlockX() - 29;
+         int north = chunkPos.getMinBlockZ() - 29;
+         Direction orientation = Direction.Plane.HORIZONTAL.getRandomDirection(random);
+-        return new OceanMonumentPieces.MonumentBuilding(random, west, north, orientation);
++        return new OceanMonumentPieces.MonumentBuilding(random, west, baseY, north, orientation); // Nekopur - seabed placement
+     }
+ 
+     private static void generatePieces(final StructurePiecesBuilder builder, final Structure.GenerationContext context) {
+-        builder.addPiece(createTopPiece(context.chunkPos(), context.random()));
++        // Nekopur start - anchor tall-profile monuments to their local seabed
++        int west = context.chunkPos().getMinBlockX() - 29;
++        int north = context.chunkPos().getMinBlockZ() - 29;
++        int baseY = org.nekopur.worldgen.NekoMonumentPlacement.baseY(context.chunkGenerator(), context.heightAccessor(), context.randomState(), west, north);
++        builder.addPiece(createTopPiece(context.chunkPos(), context.random(), baseY));
++        // Nekopur end
+     }
+ 
+     public static PiecesContainer regeneratePiecesAfterLoad(final ChunkPos chunkPos, final long seed, final PiecesContainer savedPieces) {
+@@ -64,7 +_,7 @@
+         int north = oldBoundingBox.minZ();
+         Direction defaultOrientation = Direction.Plane.HORIZONTAL.getRandomDirection(random);
+         Direction orientation = Objects.requireNonNullElse(oldTopPiece.getOrientation(), defaultOrientation);
+-        StructurePiece topPiece = new OceanMonumentPieces.MonumentBuilding(random, west, north, orientation);
++        StructurePiece topPiece = new OceanMonumentPieces.MonumentBuilding(random, west, oldBoundingBox.minY(), north, orientation); // Nekopur - retain saved seabed placement and room heights
+         StructurePiecesBuilder result = new StructurePiecesBuilder();
+         result.addPiece(topPiece);
+         return result.build();

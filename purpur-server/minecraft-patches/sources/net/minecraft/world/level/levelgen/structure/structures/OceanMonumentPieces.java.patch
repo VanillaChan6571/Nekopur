@@ -1,0 +1,17 @@
+--- a/net/minecraft/world/level/levelgen/structure/structures/OceanMonumentPieces.java
++++ b/net/minecraft/world/level/levelgen/structure/structures/OceanMonumentPieces.java
+@@ -179,7 +_,13 @@
+         private final List<OceanMonumentPieces.OceanMonumentPiece> childPieces = Lists.newArrayList();
+ 
+         public MonumentBuilding(final RandomSource random, final int west, final int north, final Direction direction) {
+-            super(StructurePieceType.OCEAN_MONUMENT_BUILDING, direction, 0, makeBoundingBox(west, 39, north, direction, 58, 23, 58));
++            this(random, west, 39, north, direction); // Nekopur - retain vanilla monument height
++        }
++
++        // Nekopur start - construct all monument rooms at the selected seabed height
++        public MonumentBuilding(final RandomSource random, final int west, final int baseY, final int north, final Direction direction) {
++            super(StructurePieceType.OCEAN_MONUMENT_BUILDING, direction, 0, makeBoundingBox(west, baseY, north, direction, 58, 23, 58));
++        // Nekopur end
+             this.setOrientation(direction);
+             List<OceanMonumentPieces.RoomDefinition> roomDefinitions = this.generateRoomGraph(random);
+             this.sourceRoom.claimed = true;

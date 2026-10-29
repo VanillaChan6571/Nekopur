@@ -1,0 +1,10 @@
+--- a/net/minecraft/world/level/biome/BiomeSources.java
++++ b/net/minecraft/world/level/biome/BiomeSources.java
+@@ -5,6 +_,7 @@
+ 
+ public class BiomeSources {
+     public static MapCodec<? extends BiomeSource> bootstrap(final Registry<MapCodec<? extends BiomeSource>> registry) {
++        Registry.register(registry, net.minecraft.resources.Identifier.fromNamespaceAndPath("nekopur", "forest_regions"), org.nekopur.worldgen.NekoForestBiomes.CODEC); // Nekopur - persistent tall forest region source
+         Registry.register(registry, "fixed", FixedBiomeSource.CODEC);
+         Registry.register(registry, "multi_noise", MultiNoiseBiomeSource.CODEC);
+         Registry.register(registry, "checkerboard", CheckerboardColumnBiomeSource.CODEC);

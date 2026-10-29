@@ -1,0 +1,14 @@
+--- a/net/minecraft/resources/RegistryDataLoader.java
++++ b/net/minecraft/resources/RegistryDataLoader.java
+@@ -250,6 +_,11 @@
+                     return CompletableFuture.allOf(loadCompletions)
+                         .thenApplyAsync(
+                             ignored -> {
++                                // Nekopur - register native worldgen after all resource holders are bound, before freezing
++                                if (loadingErrors.isEmpty() && loadTasks.stream().anyMatch(task -> task.registryKey().equals(Registries.WORLD_PRESET))) {
++                                    loadTasks.forEach(task -> ((net.minecraft.core.MappedRegistry<?>) task.registry).bindValuesForNativeBootstrap());
++                                    org.nekopur.worldgen.NekoWorldgenBootstrap.register(contextAndNewRegistries, loadTasks.stream().map(task -> task.registry).toList());
++                                }
+                                 List<RegistryLoadTask<?>> frozenRegistries = loadTasks.stream().filter(task -> task.freezeRegistry(loadingErrors)).toList();
+                                 if (!loadingErrors.isEmpty()) {
+                                     throw logErrors(loadingErrors);

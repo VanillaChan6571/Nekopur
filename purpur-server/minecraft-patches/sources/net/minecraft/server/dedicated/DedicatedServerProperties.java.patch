@@ -8,3 +8,13 @@
      public final Settings<DedicatedServerProperties>.MutableValue<Boolean> allowFlight = this.getMutable("allow-flight", false);
      public final Settings<DedicatedServerProperties>.MutableValue<String> motd = this.getMutable("motd", "A Minecraft Server");
      public final boolean codeOfConduct = this.get("enable-code-of-conduct", false);
+@@ -274,7 +_,8 @@
+             Holder.Reference<WorldPreset> defaultHolder = worldPresets.get(WorldPresets.NORMAL)
+                 .or(() -> worldPresets.listElements().findAny())
+                 .orElseThrow(() -> new IllegalStateException("Invalid datapack contents: can't find default preset"));
+-            Holder<WorldPreset> worldPreset = Optional.ofNullable(Identifier.tryParse(this.levelType))
++            // Nekopur - resolve the Neko alias before parsing it as minecraft:neko
++            Holder<WorldPreset> worldPreset = Optional.ofNullable(Identifier.tryParse(org.nekopur.worldgen.NekoWorldgenBootstrap.normalizeLevelType(this.levelType)))
+                 .map(id -> ResourceKey.create(Registries.WORLD_PRESET, id))
+                 .or(() -> Optional.ofNullable(LEGACY_PRESET_NAMES.get(this.levelType)))
+                 .flatMap(worldPresets::get)

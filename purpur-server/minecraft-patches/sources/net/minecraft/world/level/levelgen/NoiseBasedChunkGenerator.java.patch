@@ -1,0 +1,30 @@
+--- a/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
++++ b/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
+@@ -71,13 +_,14 @@
+     private final Supplier<Aquifer.FluidPicker> globalFluidPicker;
+ 
+     public NoiseBasedChunkGenerator(final BiomeSource biomeSource, final Holder<NoiseGeneratorSettings> settings) {
+-        super(biomeSource);
++        super(org.nekopur.worldgen.NekoForestBiomes.adapt(biomeSource, settings)); // Nekopur - broader tall-profile forest biomes, including legacy preset saves
+         this.settings = settings;
+-        this.globalFluidPicker = Suppliers.memoize(() -> createFluidPicker(settings.value()));
++        this.globalFluidPicker = Suppliers.memoize(() -> createFluidPicker(settings.value(), settings.is(org.nekopur.worldgen.NekoWorldgenBootstrap.TALL_NOISE_SETTINGS))); // Nekopur - tall preset lava floor
+     }
+ 
+-    private static Aquifer.FluidPicker createFluidPicker(final NoiseGeneratorSettings settings) {
+-        Aquifer.FluidStatus lavaStatus = new Aquifer.FluidStatus(-54, Blocks.LAVA.defaultBlockState());
++    private static Aquifer.FluidPicker createFluidPicker(final NoiseGeneratorSettings settings, final boolean nekoTall) { // Nekopur - tall preset lava floor
++        int lavaLevel = nekoTall ? -118 : -54; // Nekopur - keep deep tall oceans above the lava floor
++        Aquifer.FluidStatus lavaStatus = new Aquifer.FluidStatus(lavaLevel, Blocks.LAVA.defaultBlockState()); // Nekopur - tall preset lava floor
+         int seaLevel = settings.seaLevel();
+         Aquifer.FluidStatus seaStatus = new Aquifer.FluidStatus(seaLevel, settings.defaultFluid());
+         Aquifer.FluidStatus emptyStatus = new Aquifer.FluidStatus(DimensionType.MIN_Y * 2, Blocks.AIR.defaultBlockState());
+@@ -85,7 +_,7 @@
+             if (SharedConstants.DEBUG_DISABLE_FLUID_GENERATION) {
+                 return emptyStatus;
+             } else {
+-                return y < Math.min(-54, seaLevel) ? lavaStatus : seaStatus;
++                return y < Math.min(lavaLevel, seaLevel) ? lavaStatus : seaStatus; // Nekopur - tall preset lava floor
+             }
+         };
+     }
