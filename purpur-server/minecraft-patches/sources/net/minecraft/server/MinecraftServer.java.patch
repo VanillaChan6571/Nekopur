@@ -25,9 +25,11 @@
              getTPS(this.tickTimes1m, interval),
              getTPS(this.tickTimes5m, interval),
              getTPS(this.tickTimes15m, interval)
-@@ -1004,6 +_,15 @@
+@@ -1003,7 +_,17 @@
+         }
  
          LOGGER.info("Stopping server");
++        org.nekopur.worldgen.NekoLodService.shutdown(); // Nekopur - stop bounded native LOD preview workers
          Commands.COMMAND_SENDING_POOL.shutdownNow(); // Paper - Perf: Async command map building; Shutdown and don't bother finishing
 +        // Purpur start - UPnP Port Forwarding
 +        if (upnp) {

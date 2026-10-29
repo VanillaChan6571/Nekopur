@@ -44,3 +44,16 @@ tasks.register<Copy>("createNekopurMojmapBundlerJar") {
 tasks.named("assemble") {
     dependsOn("createNekopurMojmapBundlerJar")
 }
+
+// Sample the same native registries as the server without creating a world.
+tasks.register("previewSeed") {
+    group = "worldgen"
+    description = "Export a native Neko seed preview as HTML and PNG maps"
+    dependsOn(":purpur-server:previewSeed")
+}
+
+tasks.register("seedViewer") {
+    group = "worldgen"
+    description = "Launch the interactive native Neko seed viewer"
+    dependsOn(":purpur-server:seedViewer")
+}

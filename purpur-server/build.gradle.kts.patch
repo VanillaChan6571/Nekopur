@@ -1,11 +1,13 @@
 --- a/paper-server/build.gradle.kts
 +++ b/paper-server/build.gradle.kts
-@@ -2,6 +_,8 @@
+@@ -2,6 +_,10 @@
  import io.papermc.paperweight.attribute.DevBundleOutput
  import io.papermc.paperweight.util.*
  import java.time.Instant
 +import kotlin.io.path.createParentDirectories
 +import kotlin.io.path.writeText
++
++apply(from = "../nekopur-server/seed-preview.gradle.kts") // Nekopur - offline native seed previews
  
  plugins {
      `java-library`
@@ -33,7 +35,7 @@
  }
  
  tasks.generateDevelopmentBundle {
-@@ -86,7 +_,24 @@
+@@ -86,7 +_,27 @@
      }
  }
  
@@ -45,7 +47,10 @@
 +            srcDir("../paper-server/src/main/java")
 +            srcDir("../nekopur-server/src/main/java") // Nekopur
 +        }
-+        resources { srcDir("../paper-server/src/main/resources") }
++        resources {
++            srcDir("../paper-server/src/main/resources")
++            srcDir("../nekopur-server/src/main/resources") // Nekopur - native worldgen attribution
++        }
 +    }
 +    test {
 +        java { srcDir("../paper-server/src/test/java") }

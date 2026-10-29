@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Neko · Live seed atlas</title>
+    <link rel="icon" href="data:,">
+    <style>
+        :root { color-scheme: dark; font: 14px system-ui, sans-serif; background: #101c22; color: #e7efeb; }
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        button, input, select, a.download { font: inherit; color: inherit; background: #22343c; border: 1px solid #49606a; border-radius: 7px; padding: 9px 12px; }
+        button, a.download { cursor: pointer; }
+        button:hover, a.download:hover { border-color: #f0b1c8; }
+        button.primary, button.active { background: #efb1c7; color: #18232a; border-color: #efb1c7; }
+        button:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible, a:focus-visible { outline: 2px solid #71d1cf; outline-offset: 2px; }
+        input { min-width: 0; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 24px; border-bottom: 1px solid #35464f; }
+        .brand { flex-shrink: 0; }
+        .tag { font-size: 11px; color: #efb1c7; text-transform: uppercase; letter-spacing: 2px; }
+        h1 { font-size: 21px; margin: 4px 0; }
+        p { color: #a9bfbd; line-height: 1.5; margin: 0; }
+        #seed-form { display: flex; align-items: end; flex: 1; max-width: 730px; gap: 8px; flex-wrap: wrap; }
+        #seed-form label { flex: 1; min-width: 140px; }
+        label > span { display: block; color: #a9bfbd; font-size: 12px; margin-bottom: 5px; }
+        #seed-input { width: 100%; }
+        main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; height: calc(100dvh - 108px); min-height: 520px; }
+        .map { position: relative; overflow: hidden; background: #0b171e; }
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+        .layers { position: absolute; top: 18px; left: 18px; display: flex; gap: 6px; }
+        .zoom { position: absolute; top: 18px; right: 18px; display: grid; gap: 6px; }
+        .zoom button { width: 42px; padding: 9px 0; font-size: 19px; }
+        .map-footer { position: absolute; bottom: 15px; left: 18px; right: 18px; display: flex; align-items: center; justify-content: space-between; gap: 10px; pointer-events: none; font-size: 12px; }
+        .map-footer span { padding: 8px 10px; background: #14252ddd; border-radius: 6px; }
+        #status { position: absolute; top: 69px; left: 18px; max-width: calc(100% - 95px); padding: 8px 11px; background: #162b34e8; border-radius: 6px; color: #b5d5ce; font-size: 12px; }
+        #status.error { color: #ffd0d7; background: #482b35; }
+        aside { padding: 22px; background: #192a32; overflow: auto; }
+        h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #adc8c3; margin: 24px 0 12px; }
+        h2:first-child { margin-top: 0; }
+        dl { margin: 0; }
+        dt { font-size: 12px; color: #a9bfbd; margin: 10px 0 3px; }
+        dd { margin: 0; font: 13px ui-monospace, monospace; overflow-wrap: anywhere; line-height: 1.5; }
+        #location-form { display: flex; gap: 6px; flex-wrap: wrap; }
+        #location-form label { flex: 1; min-width: 85px; }
+        #location-form input { width: 100%; }
+        #location-form button { width: 100%; }
+        #mode { width: 100%; }
+        .note { font-size: 12px; margin-top: 12px; }
+        a.download { display: block; text-align: center; text-decoration: none; margin-top: 8px; }
+        .biome { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 4px 0; }
+        .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+        .biome .name { flex: 1; }
+        .biome .percent { color: #a9bfbd; }
+        #legend { line-height: 1.8; font-size: 12px; }
+        #origin { width: 100%; margin-top: 8px; }
+        @media (max-width: 850px) { header { align-items: start; gap: 15px; padding: 15px; } .brand p { display: none; } main { grid-template-columns: 1fr; height: auto; } .map { height: 65dvh; min-height: 430px; } aside { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; } .section h2 { margin-top: 0; } }
+        @media (max-width: 520px) { header { flex-direction: column; } #seed-form { width: 100%; } #seed-form label { min-width: 100%; } aside { grid-template-columns: 1fr; } .layers { left: 10px; gap: 4px; } .layers button { padding: 9px; } .zoom { right: 10px; } .map-footer { left: 10px; right: 10px; } .map-footer .hint { display: none; } }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand"><div class="tag">Neko / world generation</div><h1>Live seed atlas</h1><p>Explore your native Neko world</p></div>
+        <form id="seed-form">
+            <label><span>World seed · number or text</span><input id="seed-input" aria-label="World seed" value="6571" maxlength="256" required autocomplete="off" spellcheck="false"></label>
+            <button type="submit" class="primary">Explore seed</button><button type="button" id="random">Random seed</button>
+        </form>
+    </header>
+    <main>
+        <section class="map" aria-label="Live seed map">
+            <canvas id="map" tabindex="0" aria-label="Interactive world map. Drag to pan, scroll to zoom. Arrow keys pan; plus and minus zoom."></canvas>
+            <nav class="layers" aria-label="Map layers"><button data-layer="terrain" class="active">Terrain</button><button data-layer="elevation">Elevation</button><button data-layer="biomes">Biomes</button></nav>
+            <nav class="zoom" aria-label="Map navigation"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button></nav>
+            <div id="status" role="status" aria-live="polite">Connecting to the native generator…</div>
+            <div class="map-footer"><span id="scale">North ↑</span><span class="hint">Drag to explore · scroll to zoom · hover for coordinates</span></div>
+        </section>
+        <aside>
+            <div class="section"><h2>World profile</h2><label><span>Generator preset</span><select id="preset" aria-label="Generator preset" style="width:100%"><option value="nekopur:neko">Neko · -64 to 319</option><option value="nekopur:neko-mmo-tall">Neko MMO Tall · -128 to 511</option></select></label><dl><dt>Resolved seed</dt><dd id="resolved-seed">—</dd><dt>Generator</dt><dd id="generator">nekopur:neko</dd><dt>Map center</dt><dd id="center">—</dd><dt>Sample spacing</dt><dd id="resolution">—</dd></dl><h2>Go to coordinates</h2>
+                <form id="location-form"><label><span>X</span><input id="goto-x" aria-label="X coordinate" type="number" min="-29999984" max="29999984" value="0" required></label><label><span>Z</span><input id="goto-z" aria-label="Z coordinate" type="number" min="-29999984" max="29999984" value="0" required></label><button type="submit">Go to coordinates</button></form><button id="origin">Return to origin</button>
+            </div>
+            <div class="section"><h2>Under cursor</h2><dl><dt>Block coordinates</dt><dd id="coords">Hover over the map</dd><dt>Ground elevation</dt><dd id="height">—</dd><dt>Surface biome</dt><dd id="biome">—</dd></dl><h2>Terrain sampling</h2><select id="mode" aria-label="Terrain sampling mode"><option value="fast">Fast overview · estimated terrain</option><option value="detailed">Detailed terrain columns</option></select><p class="note" id="accuracy">Overview estimates coastlines and height. Detailed mode samples solid noise columns. Structures, trees and world spawn are not generated.</p></div>
+            <div class="section"><h2 id="legend-title">Terrain palette</h2><div id="legend"></div><h2>Export current area</h2><a id="download" class="download" download="neko-map.png">Download map PNG</a><button id="json" style="width:100%;margin-top:8px">Download sample data</button><p class="note">Pan and zoom request new terrain from the local generator. The origin cross marks X/Z 0, not world spawn.</p></div>
+            <div class="section"><h2>Sampled biomes</h2><div id="biome-list"></div><p class="note">Percentages describe this sampled square, including any area outside the visible viewport. Small terrain features can fall between samples.</p></div>
+        </aside>
+    </main>
+    <script type="module" src="/viewer.js"></script>
+</body>
+</html>
