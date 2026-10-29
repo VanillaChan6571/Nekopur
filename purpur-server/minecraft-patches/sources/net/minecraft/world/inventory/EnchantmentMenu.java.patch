@@ -1,5 +1,17 @@
 --- a/net/minecraft/world/inventory/EnchantmentMenu.java
 +++ b/net/minecraft/world/inventory/EnchantmentMenu.java
+@@ -38,6 +_,11 @@
+     public final int[] costs = new int[3];
+     public final int[] enchantClue = new int[]{-1, -1, -1};
+     public final int[] levelClue = new int[]{-1, -1, -1};
++    // Nekopur start - survival enchanting library state
++    private int nekopurLibraryPower = -1;
++    private long nekopurRulesRevision = -1;
++    private boolean nekopurRefreshingLibrary;
++    // Nekopur end - survival enchanting library state
+     // CraftBukkit start
+     private org.bukkit.craftbukkit.inventory.view.@org.jspecify.annotations.Nullable CraftEnchantmentView view = null;
+     private final org.bukkit.entity.Player player;
 @@ -63,6 +_,22 @@
                  return access.getLocation();
              }
@@ -40,6 +52,120 @@
          this.addStandardInventorySlots(inventory, 8, 84);
          this.addDataSlot(DataSlot.shared(this.costs, 0));
          this.addDataSlot(DataSlot.shared(this.costs, 1));
+@@ -112,10 +_,22 @@
+                         }
+                     }
+ 
++                    // Nekopur start - enchanted books power advanced libraries
++                    if (org.nekopur.gameplay.GameplayConfig.enabled) {
++                        bookcases = org.nekopur.gameplay.EnchantingRules.bookshelfPower(level, pos);
++                    }
++                    this.nekopurLibraryPower = bookcases;
++                    this.nekopurRulesRevision = org.nekopur.gameplay.GameplayConfig.revision;
++                    // Nekopur end - enchanted books power advanced libraries
++
+                     this.random.setSeed(this.enchantmentSeed.get());
+ 
+                     for (int ixx = 0; ixx < 3; ixx++) {
+-                        this.costs[ixx] = EnchantmentHelper.getEnchantmentCost(this.random, ixx, bookcases, itemStack);
++                        // Nekopur start - configurable enchanting requirements
++                        this.costs[ixx] = org.nekopur.gameplay.GameplayConfig.enabled
++                            ? org.nekopur.gameplay.EnchantingRules.tableCost(this.random, ixx, bookcases, itemStack)
++                            : EnchantmentHelper.getEnchantmentCost(this.random, ixx, bookcases, itemStack);
++                        // Nekopur end - configurable enchanting requirements
+                         this.enchantClue[ixx] = -1;
+                         this.levelClue[ixx] = -1;
+                         if (this.costs[ixx] < ixx + 1) {
+@@ -184,17 +_,23 @@
+ 
+     @Override
+     public boolean clickMenuButton(final Player player, final int buttonId) {
++        // Nekopur start - reject stale offers after a library changes
++        if (this.nekopurRefreshLibrary()) {
++            return false;
++        }
++        // Nekopur end - reject stale offers after a library changes
+         if (buttonId >= 0 && buttonId < this.costs.length) {
+             ItemStack itemStack = this.enchantSlots.getItem(0);
+             ItemStack currency = this.enchantSlots.getItem(1);
+             int enchantmentCost = buttonId + 1;
++            int nekopurLevelSpend = org.nekopur.gameplay.EnchantingRules.levelSpend(buttonId); // Nekopur - XP spending independent of lapis
+             if ((currency.isEmpty() || currency.getCount() < enchantmentCost) && !player.hasInfiniteMaterials()) {
+                 return false;
+             }
+ 
+             if (this.costs[buttonId] <= 0
+                 || itemStack.isEmpty()
+-                || (player.experienceLevel < enchantmentCost || player.experienceLevel < this.costs[buttonId]) && !player.hasInfiniteMaterials()) {
++                || (player.experienceLevel < nekopurLevelSpend || player.experienceLevel < this.costs[buttonId]) && !player.hasInfiniteMaterials()) { // Nekopur - verify XP spending as well as offer requirement
+                 return false;
+             }
+ 
+@@ -217,7 +_,7 @@
+                     org.bukkit.event.enchantment.EnchantItemEvent event = new org.bukkit.event.enchantment.EnchantItemEvent((org.bukkit.entity.Player) player.getBukkitEntity(), this.getBukkitView(), this.access.getLocation().getBlock(), craftItemStack, this.costs[buttonId], enchants, hintedEnchantment, hintedEnchantmentLevel, buttonId);
+                     level.getCraftServer().getPluginManager().callEvent(event);
+                     int itemLevel = event.getExpLevelCost();
+-                    if (event.isCancelled() || (itemLevel > player.experienceLevel && !player.getAbilities().instabuild) || event.getEnchantsToAdd().isEmpty()) {
++                    if (event.isCancelled() || (Math.max(itemLevel, nekopurLevelSpend) > player.experienceLevel && !player.getAbilities().instabuild) || event.getEnchantsToAdd().isEmpty()) { // Nekopur - recheck XP spending after plugin events
+                         return;
+                     }
+                     // CraftBukkit end
+@@ -241,7 +_,7 @@
+ 
+                         enchantmentItem.enchant(enchantment, entry.getValue());
+                     }
+-                    player.onEnchantmentPerformed(enchantmentItem, enchantmentCost);
++                    player.onEnchantmentPerformed(enchantmentItem, nekopurLevelSpend); // Nekopur - configurable XP spending, lapis unchanged
+                     // CraftBukkit end
+ 
+                     // CraftBukkit - TODO: let plugins change this
+@@ -275,7 +_,11 @@
+             return List.of();
+         }
+ 
+-        List<EnchantmentInstance> list = EnchantmentHelper.selectEnchantment(this.random, itemStack, enchantmentCost, tag.get().stream());
++        // Nekopur start - higher table ranks without changing loot enchantments
++        List<EnchantmentInstance> list = org.nekopur.gameplay.GameplayConfig.enabled
++            ? org.nekopur.gameplay.EnchantingRules.select(this.random, itemStack, enchantmentCost, tag.get().stream())
++            : EnchantmentHelper.selectEnchantment(this.random, itemStack, enchantmentCost, tag.get().stream());
++        // Nekopur end - higher table ranks without changing loot enchantments
+         if (itemStack.is(Items.BOOK) && list.size() > 1) {
+             list.remove(this.random.nextInt(list.size()));
+         }
+@@ -283,6 +_,33 @@
+         return list;
+     }
+ 
++    // Nekopur start - update open menus when enchanted books are removed or inserted
++    private boolean nekopurRefreshLibrary() {
++        if (this.nekopurRefreshingLibrary || this.enchantSlots.getItem(0).isEmpty()) {
++            return false;
++        }
++        int power = org.nekopur.gameplay.GameplayConfig.enabled
++            ? this.access.evaluate(org.nekopur.gameplay.EnchantingRules::bookshelfPower, this.nekopurLibraryPower)
++            : this.nekopurLibraryPower;
++        if (power == this.nekopurLibraryPower && this.nekopurRulesRevision == org.nekopur.gameplay.GameplayConfig.revision) {
++            return false;
++        }
++        this.nekopurRefreshingLibrary = true;
++        try {
++            this.slotsChanged(this.enchantSlots);
++        } finally {
++            this.nekopurRefreshingLibrary = false;
++        }
++        return true;
++    }
++
++    @Override
++    public void broadcastChanges() {
++        this.nekopurRefreshLibrary();
++        super.broadcastChanges();
++    }
++    // Nekopur end - update open menus when enchanted books are removed or inserted
++
+     public int getGoldCount() {
+         ItemStack goldStack = this.enchantSlots.getItem(1);
+         return goldStack.isEmpty() ? 0 : goldStack.getCount();
 @@ -301,7 +_,7 @@
      @Override
      public void removed(final Player player) {

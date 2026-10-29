@@ -9,13 +9,56 @@
                  player.take(this, 1);
                  int remaining = this.repairPlayerItems(serverPlayer, this.getValue());
                  if (remaining > 0) {
-@@ -371,7 +_,8 @@
+@@ -371,14 +_,31 @@
      }
  
      private int repairPlayerItems(final ServerPlayer player, final int amount) {
 -        Optional<EnchantedItemInUse> selected = EnchantmentHelper.getRandomItemWith(EnchantmentEffectComponents.REPAIR_WITH_XP, player, ItemStack::isDamaged);
-+        Optional<EnchantedItemInUse> selected = level().purpurConfig.useBetterMending ? EnchantmentHelper.getMostDamagedItemWith(EnchantmentEffectComponents.REPAIR_WITH_XP, player) :EnchantmentHelper.getRandomItemWith(// Purpur - Add option to mend the most damaged equipment first
++        // Nekopur start - configurable mending efficiency
++        boolean survivalMending = org.nekopur.gameplay.GameplayConfig.enabled;
++        if (survivalMending && org.nekopur.gameplay.GameplayConfig.mendingRepairMultiplier <= 0.0) {
++            return amount;
++        }
++        // Nekopur end - configurable mending efficiency
++        Optional<EnchantedItemInUse> selected = survivalMending && org.nekopur.gameplay.GameplayConfig.armorMendingEnabled
++            ? org.nekopur.gameplay.ArmorMendingRules.selectOrbItem(player, level().purpurConfig.useBetterMending) // Nekopur - armor uses crouching regeneration instead of XP
++            : level().purpurConfig.useBetterMending ? EnchantmentHelper.getMostDamagedItemWith(EnchantmentEffectComponents.REPAIR_WITH_XP, player) :EnchantmentHelper.getRandomItemWith(// Purpur - Add option to mend the most damaged equipment first
 +            EnchantmentEffectComponents.REPAIR_WITH_XP, player, ItemStack::isDamaged);
          if (selected.isPresent()) {
              ItemStack itemStack = selected.get().itemStack();
              int toRepairFromXpAmount = EnchantmentHelper.modifyDurabilityToRepairFromXp(player.level(), itemStack, amount);
++            // Nekopur start - scale the repair budget, keeping zero-budget XP available
++            if (survivalMending) {
++                toRepairFromXpAmount = org.nekopur.gameplay.MendingRules.repairBudget(toRepairFromXpAmount, org.nekopur.gameplay.GameplayConfig.mendingRepairMultiplier);
++                if (toRepairFromXpAmount <= 0) {
++                    return amount;
++                }
++            }
++            // Nekopur end - scale the repair budget
+             int repair = Math.min(toRepairFromXpAmount, itemStack.getDamageValue());
+             // CraftBukkit start
+             // Paper start - mending event
+-            final int consumedExperience = repair > 0 ? repair * amount / toRepairFromXpAmount : 0;
++            final int consumedExperience = survivalMending ? org.nekopur.gameplay.MendingRules.consumedExperience(repair, amount, toRepairFromXpAmount) : repair > 0 ? repair * amount / toRepairFromXpAmount : 0; // Nekopur - charge partial repairs without duplicating XP
+             org.bukkit.event.player.PlayerItemMendEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerItemMendEvent(player, this, itemStack, selected.get().inSlot(), repair, consumedExperience);
+             // Paper end - mending event
+             repair = event.getRepairAmount();
+@@ -386,9 +_,17 @@
+                 return amount;
+             }
+             // CraftBukkit end
++            // Nekopur start - respect cancellation and plugin repair edits without negative damage
++            if (survivalMending) {
++                repair = Math.max(0, Math.min(repair, itemStack.getDamageValue()));
++                if (repair == 0) {
++                    return amount;
++                }
++            }
++            // Nekopur end - respect cancellation and plugin repair edits
+             itemStack.setDamageValue(itemStack.getDamageValue() - repair);
+             if (repair > 0) {
+-                int remaining = amount - repair * amount / toRepairFromXpAmount; // Paper - diff on change - expand PlayerMendEvents
++                int remaining = amount - (survivalMending ? org.nekopur.gameplay.MendingRules.consumedExperience(repair, amount, toRepairFromXpAmount) : repair * amount / toRepairFromXpAmount); // Paper - diff on change - expand PlayerMendEvents // Nekopur - every successful repair consumes XP
+                 if (remaining > 0) {
+                     return this.repairPlayerItems(player, remaining);
+                 }

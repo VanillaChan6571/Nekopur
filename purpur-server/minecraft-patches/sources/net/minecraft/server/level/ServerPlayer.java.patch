@@ -30,6 +30,20 @@
      }
  
      private void saveParentVehicle(final ValueOutput playerOutput) {
+@@ -772,6 +_,13 @@
+         this.trackStartFallingPosition();
+         this.trackEnteredOrExitedLavaOnVehicle();
+         this.updatePlayerAttributes();
++        // Nekopur start - survival enchantment effects
++        org.nekopur.gameplay.EnchantmentMechanics.tick(this);
++        if (this.tickCount % 20 == 0) {
++            org.nekopur.gameplay.ArmorMendingRules.tick(this);
++            org.nekopur.gameplay.VanishingRules.tick(this);
++        }
++        // Nekopur end - survival enchantment effects
+         this.advancements.flushDirty(this, true);
+         if (this.postEffectsDirty) {
+             this.sendPostEffects();
 @@ -1196,6 +_,7 @@
              // Paper - moved up to sendClientboundPlayerCombatKillPacket()
              this.sendClientboundPlayerCombatKillPacket(event.getShowDeathMessages(), deathScreenMessage); // Paper - Expand PlayerDeathEvent

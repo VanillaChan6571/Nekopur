@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/level/block/SpawnerBlock.java
 +++ b/net/minecraft/world/level/block/SpawnerBlock.java
-@@ -29,6 +_,63 @@
+@@ -29,6 +_,77 @@
          return createTickerHelper(type, BlockEntityTypes.MOB_SPAWNER, level.isClientSide() ? SpawnerBlockEntity::clientTick : SpawnerBlockEntity::serverTick);
      }
  
@@ -8,7 +8,15 @@
 +    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
 +    @Override
 +    public void playerDestroy(final net.minecraft.server.level.ServerLevel level, final net.minecraft.server.level.ServerPlayer player, final net.minecraft.core.BlockPos pos, final net.minecraft.world.level.block.state.BlockState state, final @org.jspecify.annotations.Nullable BlockEntity blockEntity, final net.minecraft.world.item.ItemStack destroyedWith, final boolean includeDrops, final boolean dropExp) {
-+        if (level.purpurConfig.silkTouchEnabled && player.getBukkitEntity().hasPermission("purpur.drop.spawners") && isSilkTouch(level, destroyedWith)) {
++        // Nekopur start - rank-sensitive spawner collection respects block drop cancellation
++        int silkRank = net.minecraft.world.item.enchantment.EnchantmentHelper.getItemEnchantmentLevel(
++            net.minecraft.world.item.enchantment.Enchantments.SILK_TOUCH, destroyedWith);
++        boolean collectSpawner = org.nekopur.gameplay.GameplayConfig.enabled
++            ? includeDrops && org.nekopur.gameplay.EnchantmentMechanics.dropsSpawner(silkRank, level.getRandom().nextFloat())
++            : includeDrops && level.purpurConfig.silkTouchEnabled
++                && player.getBukkitEntity().hasPermission("purpur.drop.spawners") && isSilkTouch(level, destroyedWith);
++        if (collectSpawner) {
++            // Nekopur end - rank-sensitive spawner collection respects block drop cancellation
 +            ItemStack item = new ItemStack(Blocks.SPAWNER.asItem());
 +
 +            net.minecraft.world.level.SpawnData nextSpawnData = blockEntity instanceof SpawnerBlockEntity spawnerBlock ? spawnerBlock.getSpawner().nextSpawnData : null;
@@ -51,6 +59,12 @@
 +                }
 +                item.set(net.minecraft.core.component.DataComponents.TOOLTIP_DISPLAY, net.minecraft.world.item.component.TooltipDisplay.DEFAULT.withHidden(net.minecraft.core.component.DataComponents.BLOCK_ENTITY_DATA, true));
 +            }
++            // Nekopur start - identify collected spawners for mob-data restoration on placement
++            if (org.nekopur.gameplay.GameplayConfig.enabled) {
++                item.update(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.EMPTY,
++                    data -> data.update(tag -> tag.putBoolean(org.nekopur.gameplay.EnchantmentMechanics.SPAWNER_MARKER, true)));
++            }
++            // Nekopur end - identify collected spawners for mob-data restoration on placement
 +            popResource(level, pos, item);
 +        }
 +        super.playerDestroy(level, player, pos, state, blockEntity, destroyedWith, includeDrops, dropExp);
@@ -64,11 +78,16 @@
      @Override
      protected void spawnAfterBreak(final BlockState state, final ServerLevel level, final BlockPos pos, final ItemStack tool, final boolean dropExperience) {
          super.spawnAfterBreak(state, level, pos, tool, dropExperience);
-@@ -37,6 +_,7 @@
+@@ -37,6 +_,12 @@
  
      @Override
      public int getExpDrop(final BlockState state, final ServerLevel level, final BlockPos pos, final ItemStack tool, final boolean dropExperience) {
-+        if (level.purpurConfig.silkTouchEnabled && isSilkTouch(level, tool)) return 0; // Purpur - Silk touch spawners
++        // Nekopur start - Silk II/III attempts suppress default XP, including unsuccessful collection
++        if (org.nekopur.gameplay.GameplayConfig.enabled) {
++            if (net.minecraft.world.item.enchantment.EnchantmentHelper.getItemEnchantmentLevel(
++                net.minecraft.world.item.enchantment.Enchantments.SILK_TOUCH, tool) >= 2) return 0;
++        } else if (level.purpurConfig.silkTouchEnabled && isSilkTouch(level, tool)) return 0;
++        // Nekopur end - Silk II/III attempts suppress default XP, including unsuccessful collection
          if (dropExperience) {
              RandomSource random = level.getRandom();
              int magicCount = 15 + random.nextInt(15) + random.nextInt(15);

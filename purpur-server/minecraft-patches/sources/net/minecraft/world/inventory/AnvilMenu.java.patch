@@ -13,6 +13,14 @@
  public class AnvilMenu extends ItemCombinerMenu {
      public static final int INPUT_SLOT = 0;
      public static final int ADDITIONAL_SLOT = 1;
+@@ -33,6 +_,7 @@
+     public int repairItemCountCost;
+     public @Nullable String itemName;
+     public final DataSlot cost = DataSlot.standalone();
++    private long gameplayRevision = org.nekopur.gameplay.GameplayConfig.revision; // Nekopur - invalidate open results after a rules reload
+     private boolean onlyRenaming = false;
+     private static final int COST_FAIL = 0;
+     private static final int COST_BASE = 1;
 @@ -51,6 +_,10 @@
      private org.bukkit.craftbukkit.inventory.view.CraftAnvilView bukkitEntity;
      // CraftBukkit end
@@ -24,13 +32,58 @@
  
      public AnvilMenu(final int containerId, final Inventory inventory) {
          this(containerId, inventory, ContainerLevelAccess.NULL);
-@@ -76,12 +_,17 @@
+@@ -58,7 +_,19 @@
+ 
+     public AnvilMenu(final int containerId, final Inventory inventory, final ContainerLevelAccess access) {
+         super(MenuType.ANVIL, containerId, inventory, access, createInputSlotDefinitions());
+-        this.addDataSlot(this.cost);
++        // Nekopur start - retain actual API/XP cost while supporting the vanilla client ceiling
++        this.addDataSlot(new DataSlot() {
++            @Override
++            public int get() {
++                return AnvilMenu.this.getClientCost();
++            }
++
++            @Override
++            public void set(final int value) {
++                AnvilMenu.this.cost.set(value);
++            }
++        });
++        // Nekopur end - retain actual API/XP cost
+     }
+ 
+     private static ItemCombinerMenuSlotDefinition createInputSlotDefinitions() {
+@@ -76,12 +_,40 @@
  
      @Override
      protected boolean mayPickup(final Player player, final boolean hasItem) {
 -        return (player.hasInfiniteMaterials() || player.experienceLevel >= this.cost.get()) && this.cost.get() > AnvilMenu.DEFAULT_DENIED_COST && hasItem; // CraftBukkit - allow cost 0 like a free item
-+        return (player.hasInfiniteMaterials() || player.experienceLevel >= this.cost.get()) && (this.bypassCost || this.cost.get() > AnvilMenu.DEFAULT_DENIED_COST) && hasItem; // CraftBukkit - allow cost 0 like a free item // Purpur - Anvil API
-     }
+-    }
++        // Nekopur start - refresh stale offers before a pickup can use the old result
++        if (this.gameplayRevision != org.nekopur.gameplay.GameplayConfig.revision) {
++            this.createResult();
++            return false;
++        }
++        // Nekopur end - refresh stale offers
++        this.showActualCost(player); // Nekopur - report the real cost even on an insufficient-XP click
++        // Nekopur start - reset actual output before ordinary pickup copies or transfers it
++        boolean allowed = (player.hasInfiniteMaterials() || player.experienceLevel >= this.cost.get()) && (this.bypassCost || this.cost.get() > AnvilMenu.DEFAULT_DENIED_COST) && hasItem; // CraftBukkit - allow cost 0 like a free item // Purpur - Anvil API
++        if (allowed) {
++            org.nekopur.gameplay.ArmorMendingRules.resetAfterAnvilRepair(this.inputSlots.getItem(0), this.inputSlots.getItem(1), this.resultSlots.getItem(0));
++        }
++        return allowed;
++        // Nekopur end - reset actual output before ordinary pickup
++    }
++
++    // Nekopur start - shift-click transfers the result before onTake and its detached activeQuickItem
++    @Override
++    public ItemStack quickMoveStack(final Player player, final int slotIndex) {
++        if (slotIndex == RESULT_SLOT) {
++            org.nekopur.gameplay.ArmorMendingRules.resetAfterAnvilRepair(this.inputSlots.getItem(0), this.inputSlots.getItem(1), this.resultSlots.getItem(0));
++        }
++        return super.quickMoveStack(player, slotIndex);
++    }
++    // Nekopur end - reset real shift-click output before transfer
  
      @Override
      protected void onTake(final Player player, final ItemStack carried) {
@@ -43,10 +96,11 @@
              player.giveExperienceLevels(-this.cost.get());
          }
  
-@@ -134,13 +_,19 @@
+@@ -134,13 +_,20 @@
  
      @Override
      public void createResult() {
++        this.gameplayRevision = org.nekopur.gameplay.GameplayConfig.revision; // Nekopur - this output belongs to the current rules
 +        // Purpur start - Anvil API
 +        this.bypassCost = false;
 +        this.canDoUnsafeEnchants = false;
@@ -64,7 +118,7 @@
              ItemStack result = input.copy();
              ItemStack addition = this.inputSlots.getItem(1);
              ItemEnchantments.Mutable enchantments = new ItemEnchantments.Mutable(EnchantmentHelper.getEnchantmentsForCrafting(result));
-@@ -198,23 +_,34 @@
+@@ -198,24 +_,36 @@
                          int level = entry.getIntValue();
                          level = current == level ? level + 1 : Math.max(level, current);
                          Enchantment enchantment = enchantmentHolder.value();
@@ -99,10 +153,13 @@
                          } else {
                              isAnyEnchantmentCompatible = true;
 -                            if (level > enchantment.getMaxLevel() && !this.bypassEnchantmentLevelRestriction) { // Paper - bypass anvil level restrictions
-+                            if (!org.purpurmc.purpur.PurpurConfig.allowHigherEnchantsLevels && level > enchantment.getMaxLevel() && !this.bypassEnchantmentLevelRestriction) { // Paper - bypass anvil level restrictions // Purpur - Config to allow unsafe enchants
-                                 level = enchantment.getMaxLevel();
+-                                level = enchantment.getMaxLevel();
++                            int maximumEnchantmentLevel = org.nekopur.gameplay.GameplayConfig.getMaxLevel(enchantmentHolder); // Nekopur - configurable normal enchantment caps
++                            if (!org.purpurmc.purpur.PurpurConfig.allowHigherEnchantsLevels && level > maximumEnchantmentLevel && !this.bypassEnchantmentLevelRestriction) { // Paper - bypass anvil level restrictions // Purpur - Config to allow unsafe enchants
++                                level = maximumEnchantmentLevel; // Nekopur - preserve explicit unsafe overrides
                              }
  
+                             enchantments.set(enchantmentHolder, level);
 @@ -243,6 +_,54 @@
                  if (!this.itemName.equals(input.getHoverName().getString())) {
                      namingCost = 1;
@@ -158,36 +215,65 @@
                      result.set(DataComponents.CUSTOM_NAME, Component.literal(this.itemName));
                  }
              } else if (input.has(DataComponents.CUSTOM_NAME)) {
-@@ -267,6 +_,12 @@
+@@ -259,7 +_,7 @@
+ 
+             if (namingCost == price && namingCost > 0) {
+                 // CraftBukkit start
+-                if (this.cost.get() >= this.maximumRepairCost) {
++                if (!this.hasUnlimitedCost() && this.cost.get() >= this.maximumRepairCost) { // Nekopur - keep the true rename cost when the ceiling is removed
+                     this.cost.set(this.maximumRepairCost - 1);
+                 // CraftBukkit end
+                 }
+@@ -267,7 +_,13 @@
                  this.onlyRenaming = true;
              }
  
+-            if (this.cost.get() >= this.maximumRepairCost && !this.player.hasInfiniteMaterials()) { // CraftBukkit
 +            // Purpur start - Anvil API
 +            if (this.bypassCost && this.cost.get() >= this.maximumRepairCost) {
 +                this.cost.set(this.maximumRepairCost - 1);
 +            }
 +            // Purpur end - Anvil API
 +
-             if (this.cost.get() >= this.maximumRepairCost && !this.player.hasInfiniteMaterials()) { // CraftBukkit
++            if (!this.hasUnlimitedCost() && this.cost.get() >= this.maximumRepairCost && !this.player.hasInfiniteMaterials()) { // CraftBukkit // Nekopur - configurable removal of the cost ceiling
                  result = ItemStack.EMPTY;
              }
-@@ -287,6 +_,13 @@
+ 
+@@ -287,6 +_,14 @@
  
              org.bukkit.craftbukkit.event.CraftEventFactory.callPrepareAnvilEvent(this.getBukkitView(), result); // CraftBukkit
              this.broadcastChanges();
++            this.showActualCost(this.player); // Nekopur - explain the client display workaround
 +
 +            // Purpur start - Anvil API
-+            if ((this.canDoUnsafeEnchants || org.purpurmc.purpur.PurpurConfig.allowInapplicableEnchants || org.purpurmc.purpur.PurpurConfig.allowIncompatibleEnchants) && result != ItemStack.EMPTY) { // Purpur - Config to allow unsafe enchants
-+                ((ServerPlayer) this.player).connection.send(new ClientboundContainerSetSlotPacket(this.containerId, this.incrementStateId(), 2, result));
-+                ((ServerPlayer) this.player).connection.send(new ClientboundContainerSetDataPacket(this.containerId, 0, this.cost.get()));
++            if ((this.hasUnlimitedCost() || this.canDoUnsafeEnchants || org.purpurmc.purpur.PurpurConfig.allowInapplicableEnchants || org.purpurmc.purpur.PurpurConfig.allowIncompatibleEnchants) && result != ItemStack.EMPTY) { // Purpur - Config to allow unsafe enchants // Nekopur - synchronize high-cost results
++                ((ServerPlayer) this.player).connection.send(new ClientboundContainerSetSlotPacket(this.containerId, this.incrementStateId(), 2, this.resultSlots.getItem(0))); // Nekopur - preserve PrepareAnvilEvent result edits
++                ((ServerPlayer) this.player).connection.send(new ClientboundContainerSetDataPacket(this.containerId, 0, this.getClientCost())); // Nekopur - client-safe display with actual cost kept on server
 +            }
 +            // Purpur end - Anvil API
          } else {
              org.bukkit.craftbukkit.event.CraftEventFactory.callPrepareAnvilEvent(this.getBukkitView(), ItemStack.EMPTY); // CraftBukkit
              this.cost.set(AnvilMenu.DEFAULT_DENIED_COST); // CraftBukkit - use a variable for set a cost for denied item
-@@ -295,7 +_,7 @@
+@@ -294,8 +_,24 @@
+         this.sendAllDataToRemote(); // CraftBukkit - SPIGOT-6686, SPIGOT-7931: Always send completed inventory to stay in sync with client
      }
  
++    // Nekopur start - vanilla clients hardcode the Too Expensive label at 40
++    private boolean hasUnlimitedCost() {
++        return org.nekopur.gameplay.GameplayConfig.enabled && org.nekopur.gameplay.GameplayConfig.removeAnvilCostLimit;
++    }
++
++    private int getClientCost() {
++        return this.hasUnlimitedCost() ? Math.min(39, this.cost.get()) : this.cost.get();
++    }
++
++    private void showActualCost(final Player player) {
++        if (this.hasUnlimitedCost() && this.cost.get() >= 40 && player instanceof ServerPlayer serverPlayer) {
++            serverPlayer.sendSystemMessage(Component.literal("Anvil cost: " + this.cost.get() + " levels (menu display capped at 39)"), true);
++        }
++    }
++    // Nekopur end - client display and actual cost
++
      public static int calculateIncreasedRepairCost(final int baseCost) {
 -        return (int)Math.min(baseCost * 2L + 1L, 2147483647L);
 +        return org.purpurmc.purpur.PurpurConfig.anvilCumulativeCost ? (int)Math.min(baseCost * 2L + 1L, 2147483647L) : 0; // Purpur - Make anvil cumulative cost configurable

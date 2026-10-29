@@ -1,0 +1,15 @@
+--- a/net/minecraft/world/item/enchantment/Enchantment.java
++++ b/net/minecraft/world/item/enchantment/Enchantment.java
+@@ -164,6 +_,12 @@
+     }
+ 
+     public static boolean areCompatible(final Holder<Enchantment> enchantment, final Holder<Enchantment> other) {
++        // Nekopur start - general Protection may coexist with one specialized protection
++        if (org.nekopur.gameplay.GameplayConfig.enabled
++            && org.nekopur.gameplay.EnchantmentMechanics.protectionPair(enchantment, other)) {
++            return true;
++        }
++        // Nekopur end - general Protection may coexist with one specialized protection
+         return !enchantment.equals(other) && !enchantment.value().exclusiveSet.contains(other) && !other.value().exclusiveSet.contains(enchantment);
+     }
+ 

@@ -1,5 +1,15 @@
 --- a/net/minecraft/world/item/enchantment/EnchantmentHelper.java
 +++ b/net/minecraft/world/item/enchantment/EnchantmentHelper.java
+@@ -458,7 +_,8 @@
+     public static boolean has(final ItemStack item, final DataComponentType<?> effectType) {
+         MutableBoolean found = new MutableBoolean(false);
+         runIterationOnItem(item, (enchantment, level) -> {
+-            if (enchantment.value().effects().has(effectType)) {
++            if (enchantment.value().effects().has(effectType)
++                && !org.nekopur.gameplay.VanishingRules.ignoreEffect(enchantment, effectType)) { // Nekopur - Vanishing no longer destroys equipment
+                 found.setTrue();
+             }
+         });
 @@ -642,4 +_,58 @@
      private interface EnchantmentVisitor {
          void accept(Holder<Enchantment> enchantment, int level);
