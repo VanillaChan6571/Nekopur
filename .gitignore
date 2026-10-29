@@ -52,6 +52,9 @@ manifest.mf
 
 # other stuff
 /run
+/seed-previews/
+/scripts/__pycache__/
+/logs/
 
 /purpur-server/build.gradle.kts
 /purpur-server/src/minecraft
