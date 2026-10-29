@@ -75,6 +75,7 @@ public class PurpurConfig {
         commands = new HashMap<>();
         commands.put("purpur", new PurpurCommand("purpur"));
         commands.put("purrworlds", new PurrWorldsCommand("purrworlds"));
+        commands.put("nekolod", new org.nekopur.command.NekoLodCommand()); // Nekopur - native distant previews
 
         version = getInt("config-version", 50);
         set("config-version", 50);
@@ -433,6 +434,17 @@ public class PurpurConfig {
     }
 
     public static boolean allowInapplicableEnchants = false;
+
+    // Nekopur start - survival equipment progression
+    private static void nekopurGameplaySettings() {
+        org.nekopur.gameplay.GameplayConfig.load(config);
+    }
+
+    private static void nekopurLodPreviewSettings() {
+        org.nekopur.worldgen.NekoLodService.configure(config, CONFIG_FILE);
+    }
+    // Nekopur end - survival equipment progression
+
     public static boolean allowIncompatibleEnchants = false;
     public static boolean allowHigherEnchantsLevels = false;
     public static boolean allowUnsafeEnchantCommand = false;
