@@ -551,7 +551,7 @@ including the native worldgen classes, survival enchanting classes and Tectonic
 license notice.
 The tall-profile bundler was rebuilt and inspected as version 26.3, including
 the tall preset, viewer resources and the global lava-floor hook. Artifact:
-`nekopur-server/build/libs/nekopur-bundler-26.3.local-SNAPSHOT-mojmap.jar`.
+`nekopur-server/build/libs/nekopur-mmo-survival-bundler-26.3.local-SNAPSHOT-mojmap.jar`.
 SHA-256: `e91ba2043dd9c1070965c340025deabb625ed2c992fed8ad58adc466dc18a0ee`.
 
 Before opening the survival world to players, inspect several seeds in-game,

@@ -1,4 +1,4 @@
-name: Build Nekopur Bundler
+name: Build Nekopur MMO Survival Bundler
 
 on:
   workflow_dispatch:
@@ -43,15 +43,15 @@ jobs:
         shell: pwsh
         run: |
           $hash = (git rev-parse --short=7 HEAD).Trim()
-          $src = Get-ChildItem nekopur-server\build\libs\nekopur-bundler-*-mojmap.jar | Select-Object -First 1
+          $src = Get-ChildItem nekopur-server\build\libs\nekopur-mmo-survival-bundler-*-mojmap.jar | Select-Object -First 1
           if (-not $src) { throw "Bundler jar not found." }
           # Derive the version from the jar filename â€” gradle.properties has no 'version' line on 26.x
-          $ver = $src.BaseName -replace '^nekopur-bundler-', '' -replace '-mojmap$', ''
-          $dest = "nekopur-server\build\libs\nekopur-bundler-$ver-@$hash-mojmap.jar"
+          $ver = $src.BaseName -replace '^nekopur-mmo-survival-bundler-', '' -replace '-mojmap$', ''
+          $dest = "nekopur-server\build\libs\nekopur-mmo-survival-bundler-$ver-@$hash-mojmap.jar"
           Copy-Item $src.FullName $dest -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nekopur-bundler
-          path: nekopur-server\build\libs\nekopur-bundler-*-@*-mojmap.jar
+          name: nekopur-mmo-survival-bundler
+          path: nekopur-server\build\libs\nekopur-mmo-survival-bundler-*-@*-mojmap.jar

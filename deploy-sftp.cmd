@@ -12,7 +12,7 @@ call "%PROJECT_DIR%deploy-sftp.local.cmd"
 
 set "JAR=%~1"
 rem /o-d lists newest first, so the first match is the jar that was just built.
-if not defined JAR for /f "delims=" %%F in ('dir /b /o-d "%PROJECT_DIR%nekopur-server\build\libs\nekopur-bundler-*-mojmap.jar" 2^>nul') do if not defined JAR set "JAR=%PROJECT_DIR%nekopur-server\build\libs\%%F"
+if not defined JAR for /f "delims=" %%F in ('dir /b /o-d "%PROJECT_DIR%nekopur-server\build\libs\nekopur-mmo-survival-bundler-*-mojmap.jar" 2^>nul') do if not defined JAR set "JAR=%PROJECT_DIR%nekopur-server\build\libs\%%F"
 
 if not defined JAR (
   echo No built jar found. Run gradlew :nekopur-server:createNekopurMojmapBundlerJar first.

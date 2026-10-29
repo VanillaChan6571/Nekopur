@@ -30,8 +30,9 @@ tasks.named("classes") {
 // Nekopur - 26.x paperweight renamed createMojmapBundlerJar -> createBundlerJar (mojmap is the default,
 // no reobf variant), whose bundler jar is "purpur-bundler-<version>.jar". Copy it by filename from
 // purpur-server's libs dir (config-cache safe: no cross-project task object reference / closures) and
-// rename to the Nekopur bundler name.
-val nekopurBundlerName = "nekopur-bundler-${project.version}-mojmap.jar"
+// rename to the Nekopur bundler name. The survival line names its jar distinctly so a
+// built artifact is never mistaken for the base 26.3 build.
+val nekopurBundlerName = "nekopur-mmo-survival-bundler-${project.version}-mojmap.jar"
 val purpurBundlerSource = "purpur-bundler-${project.version}.jar"
 tasks.register<Copy>("createNekopurMojmapBundlerJar") {
     dependsOn(":purpur-server:createBundlerJar")

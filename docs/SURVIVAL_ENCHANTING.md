@@ -240,7 +240,7 @@ and Vanishing activation/cancellation, thresholds, cooldown, and death-loss remo
 The Minecraft source patches were exported and successfully reapplied (232 source
 patches total). All seven regenerated Minecraft files match the tested sources
 after newline normalization. The runnable
-`nekopur-server/build/libs/nekopur-bundler-26.3.local-SNAPSHOT-mojmap.jar` built
+`nekopur-server/build/libs/nekopur-mmo-survival-bundler-26.3.local-SNAPSHOT-mojmap.jar` built
 successfully and contains all six gameplay helpers. Its packaged server identifies
 release 26.3 and protocol 777. SHA-256:
 `ca05cbb179c9995ed0a3a59f2d87eaaca1081bf0a8263c3f9b5af357fb53c0e6`.
